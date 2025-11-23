@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import farcaster from '@farcaster/frame-sdk';
 // Import Jembatan Supabase
 import { supabase } from '@/lib/supabase';
+// IMPORT BARU UNTUK NAVIGASI
+import Link from 'next/link';
 
 // ==========================================
 // BAGIAN 1: KONFIGURASI GAME
@@ -17,7 +19,7 @@ const PIPE_SPEED = 2;
 const PIPE_SPAWN_RATE = 1500;
 const GAP_SIZE = 120;
 
-export default function FlappyBasedLeaderboardFinalFix() {
+export default function FlappyBasedLeaderboardFinalComplete() {
   // ==========================================
   // BAGIAN 2: STATE & REFS
   // ==========================================
@@ -26,8 +28,6 @@ export default function FlappyBasedLeaderboardFinalFix() {
   const [score, setScore] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
   const [farcasterUser, setFarcasterUser] = useState<any>(null);
-  
-  // PENTING: Defaultnya TRUE agar tidak stuck loading di browser biasa
   const [isFarcasterLoaded, setIsFarcasterLoaded] = useState(true);
 
   // State Database
@@ -71,35 +71,21 @@ export default function FlappyBasedLeaderboardFinalFix() {
   // ==========================================
   // BAGIAN 4: EFEK & FUNGSI LOGIKA
   // ==========================================
-
-  // EFEK Pengirim Skor
   useEffect(() => {
     if (isGameOver) {
         sendScoreToSupabase(score);
     }
   }, [isGameOver, score, sendScoreToSupabase]);
 
-  // --- PERBAIKAN UTAMA DI SINI ---
-  // EFEK Inisialisasi Farcaster
   useEffect(() => {
     const initFarcaster = async () => {
-      // SOLUSI: Panggil .ready() SECEPAT MUNGKIN dan jangan ditunggu (tanpa await)
-      // Ini memberi tahu Farcaster untuk menghilangkan splash screen segera.
-      farcaster.actions.ready().catch(() => {
-          console.log("Info: Bukan di Warpcast native, .ready() diabaikan.");
-      });
-      
-      // Setelah lapor siap, baru pelan-pelan coba ambil data user
+      farcaster.actions.ready().catch(() => {});
       try {
         const context = await farcaster.context;
         if (context && context.user) {
-            console.log("User Farcaster ditemukan:", context.user.username);
             setFarcasterUser(context.user);
         }
-      } catch (error) {
-        console.log("Gagal mengambil context user (normal di browser).");
-      }
-      // Catatan: isFarcasterLoaded sudah default true, jadi tidak perlu di-set lagi di sini.
+      } catch (error) {}
     };
     initFarcaster();
   }, []);
@@ -110,7 +96,6 @@ export default function FlappyBasedLeaderboardFinalFix() {
     gameState.current.birdVelocity = JUMP;
   };
 
-  // Fungsi Reset Game
   const resetGame = () => {
     gameState.current = {
       birdY: GAME_HEIGHT / 2,
@@ -129,7 +114,6 @@ export default function FlappyBasedLeaderboardFinalFix() {
   // ==========================================
   // BAGIAN 5: GAME LOOP & UI
   // ==========================================
-  // (Tidak ada perubahan di bagian ini dari kode sebelumnya)
   useEffect(() => {
     if (!isFarcasterLoaded) return;
     const canvas = canvasRef.current;
@@ -212,9 +196,6 @@ export default function FlappyBasedLeaderboardFinalFix() {
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-4">
-      
-      {/* Hapus overlay loading karena isFarcasterLoaded default true */}
-
       <h1 className="text-3xl font-bold mb-2 text-blue-400">Flappy Based</h1>
       {farcasterUser && (
          <p className="mb-4 text-sm text-slate-300">Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span></p>
@@ -263,6 +244,17 @@ export default function FlappyBasedLeaderboardFinalFix() {
                      <p className="text-xs text-slate-500">(Score 0 not saved)</p>
                 )}
             </div>
+
+            {/* --- TOMBOL LINK KE LEADERBOARD (BARU) --- */}
+            <div className="mt-2 w-full max-w-[200px]">
+                <Link 
+                  href="/leaderboard"
+                  className="w-full px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 rounded-full text-white font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg"
+                >
+                   <span>🏆</span> View Leaderboard
+                </Link>
+            </div>
+
           </div>
         )}
       </div>

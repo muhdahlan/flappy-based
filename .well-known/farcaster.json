@@ -1,0 +1,18 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjN9.eyJkb21haW4iOiJleGFtcGxlLmNvbSJ9.M-dd1rQ...",
+    "payload": "eyJkb21haW4iOiJleGFtcGxlLmNvbSJ9",
+    "signature": "M-dd1rQ..."
+  },
+  "frame": {
+    "version": "1",
+    "name": "Flappy Based",
+    "iconUrl": "https://placehold.co/200x200/0052FF/ffffff?text=FB",
+    "homeUrl": "https://example.com",
+    "imageUrl": "https://placehold.co/600x400/0052FF/ffffff?text=Flappy+Based+Game",
+    "buttonTitle": "Play Game",
+    "splashImageUrl": "https://placehold.co/600x400/0052FF/ffffff?text=Loading...",
+    "splashBackgroundColor": "#0052FF",
+    "webhookUrl": "https://example.com/api/webhook"
+  }
+}

@@ -28,6 +28,8 @@ export default function FlappyBasedLeaderboardFinalComplete() {
   const [score, setScore] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
   const [farcasterUser, setFarcasterUser] = useState<any>(null);
+  
+  // PENTING: Default TRUE agar tidak blank putih
   const [isFarcasterLoaded, setIsFarcasterLoaded] = useState(true);
 
   // State Database
@@ -79,13 +81,20 @@ export default function FlappyBasedLeaderboardFinalComplete() {
 
   useEffect(() => {
     const initFarcaster = async () => {
-      farcaster.actions.ready().catch(() => {});
+      // Panggil ready() secepat mungkin, tangkap error jika ada agar tidak crash
+      try {
+          farcaster.actions.ready().catch(err => console.log("Farcaster ready() info:", err));
+      } catch (e) { /* ignore */ }
+
       try {
         const context = await farcaster.context;
         if (context && context.user) {
             setFarcasterUser(context.user);
         }
-      } catch (error) {}
+      } catch (error) {
+          console.log("Gagal mengambil context user (normal di browser).");
+      }
+      // isFarcasterLoaded sudah true secara default, jadi aman.
     };
     initFarcaster();
   }, []);
@@ -115,10 +124,11 @@ export default function FlappyBasedLeaderboardFinalComplete() {
   // BAGIAN 5: GAME LOOP & UI
   // ==========================================
   useEffect(() => {
-    if (!isFarcasterLoaded) return;
+    // PENTING: Cek canvasRef.current dulu sebelum akses
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
+    if (!canvas) return; 
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
     let animationFrameId: number;
 
@@ -245,7 +255,7 @@ export default function FlappyBasedLeaderboardFinalComplete() {
                 )}
             </div>
 
-            {/* --- TOMBOL LINK KE LEADERBOARD (BARU) --- */}
+            {/* --- TOMBOL LINK KE LEADERBOARD --- */}
             <div className="mt-2 w-full max-w-[200px]">
                 <Link 
                   href="/leaderboard"

@@ -2,11 +2,8 @@
   "redirects": [
     {
       "source": "/.well-known/farcaster.json",
-      "destination": "https://api.farcaster.xyz/miniapps/hosted-manifest/019ab305-c421-eda0-9900-91ac64bc6d12",
+      "destination": "/api/farcaster-manifest",
       "permanent": false
     }
-  ],
-  "baseBuilder": {
-    "ownerAddress": "0x83327998662Af2174CFae423c31e5e2458257E34"
-  }
+  ]
 }

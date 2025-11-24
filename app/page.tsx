@@ -55,7 +55,7 @@ export default function FlappyBasedFinalUI() {
   }, [isGameOver, score, sendScoreToSupabase]);
 
   // ==========================================
-  // INISIALISASI FARCASTER SDK (PERHATIKAN BAGIAN INI)
+  // INISIALISASI FARCASTER SDK
   // ==========================================
   useEffect(() => {
     const initFarcasterSDK = async () => {
@@ -122,79 +122,4 @@ export default function FlappyBasedFinalUI() {
       }
 
       // --- LOGIKA GAME BERJALAN ---
-      const state = gameState.current;
-      state.birdVelocity += GRAVITY;
-      state.birdY += state.birdY;
-
-      if (timestamp - state.lastPipeSpawn > PIPE_SPAWN_RATE) {
-        const minTop = 50; const maxTop = GAME_HEIGHT - GAP_SIZE - 150;
-        const topHeight = Math.random() * (maxTop - minTop) + minTop;
-        state.pipes.push({ x: GAME_WIDTH, topHeight, passed: false });
-        state.lastPipeSpawn = timestamp;
-      }
-
-      state.pipes.forEach((pipe, index) => {
-        pipe.x -= PIPE_SPEED;
-        const birdX = 50; const birdSize = 24; const pipeWidth = 52;
-        const hitTop = birdX + birdSize > pipe.x && birdX < pipe.x + pipeWidth && state.birdY < pipe.topHeight;
-        const hitBottom = birdX + birdSize > pipe.x && birdX < pipe.x + pipeWidth && state.birdY + birdSize > pipe.topHeight + GAP_SIZE;
-        if (hitTop || hitBottom) setIsGameOver(true);
-        if (!pipe.passed && birdX > pipe.x + pipeWidth) { setScore(p => p + 1); pipe.passed = true; }
-        if (pipe.x + pipeWidth < -10) state.pipes.splice(index, 1);
-      });
-
-      if (state.birdY > GAME_HEIGHT - 30 || state.birdY < -50) setIsGameOver(true);
-
-      // --- MENGGAMBAR (RENDERING) ---
-      ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Langit Biru
-      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20); // Tanah (Biru lebih tua)
-      
-      // Pipa (Putih)
-      ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
-      state.pipes.forEach(pipe => {
-          ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
-          ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
-      });
-      
-      // Burung (Kuning/Oranye)
-      ctx.fillStyle = '#FCD34D'; ctx.beginPath(); ctx.arc(50 + 12, state.birdY + 12, 12, 0, 2 * Math.PI); ctx.fill();
-      
-      // Skor saat bermain
-      if (gameStarted && !isGameOver) {
-        ctx.fillStyle = 'white'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(score.toString(), GAME_WIDTH / 2, 80);
-      }
-
-      if (!isGameOver) animationFrameId = requestAnimationFrame(gameLoop);
-    };
-
-    animationFrameId = requestAnimationFrame(gameLoop);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isGameOver, gameStarted, score, farcasterUser]);
-
-  // ==========================================
-  // TAMPILAN UTAMA (UI)
-  // ==========================================
-  return (
-    <main className="flex flex-col items-center justify-start pt-10 min-h-screen bg-[#0052FF] text-white p-4 overflow-hidden">
-      
-      {/* HEADER: Judul dan Username */}
-      <div className="text-center mb-6 z-10">
-        <h1 className="text-4xl font-extrabold drop-shadow-md tracking-tight">
-          Flappy Based
-        </h1>
-        {farcasterUser && (
-           <p className="text-lg text-blue-100 mt-1 font-medium">
-             Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span>
-           </p>
-        )}
-      </div>
-      
-      {/* AREA GAME */}
-      <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF]">
-        <canvas
-          ref={canvasRef}
-          width={GAME_WIDTH}
-          height={GAME_HEIGHT}
-          onClick
+      const state

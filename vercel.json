@@ -2,7 +2,7 @@
   "redirects": [
     {
       "source": "/.well-known/farcaster.json",
-      "destination": "https://api.farcaster.xyz/miniapps/hosted-manifest/019ab305-c421-eda0-9900-91ac64bc6d12", // <--- GANTI KE URL HOSTED MANIFEST ASLI
+      "destination": "https://api.farcaster.xyz/miniapps/hosted-manifest/019ab305-c421-eda0-9900-91ac64bc6d12",
       "permanent": false
     }
   ]

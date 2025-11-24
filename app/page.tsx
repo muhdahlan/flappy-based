@@ -1,15 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-// Import SDK Farcaster
-import farcaster from '@farcaster/frame-sdk';
-// Import Jembatan Supabase
+import farcaster from '@farcaster/miniapp-sdk'; // Import Farcaster SDK
 import { supabase } from '@/lib/supabase';
-// IMPORT BARU UNTUK NAVIGASI
 import Link from 'next/link';
 
 // ==========================================
-// BAGIAN 1: KONFIGURASI GAME
+// KONFIGURASI GAME
 // ==========================================
 const GAME_WIDTH = 320;
 const GAME_HEIGHT = 480;
@@ -19,9 +16,9 @@ const PIPE_SPEED = 2;
 const PIPE_SPAWN_RATE = 1500;
 const GAP_SIZE = 120;
 
-export default function FlappyBasedLeaderboardFinalComplete() {
+export default function FlappyBasedFinalUI() {
   // ==========================================
-  // BAGIAN 2: STATE & REFS
+  // STATE & REFS
   // ==========================================
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isGameOver, setIsGameOver] = useState(false);
@@ -29,10 +26,6 @@ export default function FlappyBasedLeaderboardFinalComplete() {
   const [gameStarted, setGameStarted] = useState(false);
   const [farcasterUser, setFarcasterUser] = useState<any>(null);
   
-  // PENTING: Default TRUE agar tidak blank putih
-  const [isFarcasterLoaded, setIsFarcasterLoaded] = useState(true);
-
-  // State Database
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -44,61 +37,52 @@ export default function FlappyBasedLeaderboardFinalComplete() {
   });
 
   // ==========================================
-  // BAGIAN 3: FUNGSI DATABASE
+  // FUNGSI DATABASE & FARCASTER
   // ==========================================
   const sendScoreToSupabase = useCallback(async (finalScore: number) => {
     if (!farcasterUser || finalScore === 0 || isSubmitting || isSubmitted) return;
-
     setIsSubmitting(true);
-    console.log(`Mengirim skor ${finalScore} untuk user ${farcasterUser.username}...`);
-
-    const { error } = await supabase
-      .from('scores')
-      .insert({
+    const { error } = await supabase.from('scores').insert({
         username: farcasterUser.username,
         score: finalScore,
       });
-
     setIsSubmitting(false);
-
-    if (error) {
-      console.error("Gagal mengirim skor:", error.message);
-    } else {
-      console.log("Skor berhasil masuk database!");
-      setIsSubmitted(true);
-    }
+    if (!error) setIsSubmitted(true);
   }, [farcasterUser, isSubmitting, isSubmitted]);
 
-
-  // ==========================================
-  // BAGIAN 4: EFEK & FUNGSI LOGIKA
-  // ==========================================
   useEffect(() => {
-    if (isGameOver) {
-        sendScoreToSupabase(score);
-    }
+    if (isGameOver) sendScoreToSupabase(score);
   }, [isGameOver, score, sendScoreToSupabase]);
 
+  // ==========================================
+  // INISIALISASI FARCASTER SDK (PERHATIKAN BAGIAN INI)
+  // ==========================================
   useEffect(() => {
-    const initFarcaster = async () => {
-      // Panggil ready() secepat mungkin, tangkap error jika ada agar tidak crash
+    const initFarcasterSDK = async () => {
       try {
-          farcaster.actions.ready().catch(err => console.log("Farcaster ready() info:", err));
-      } catch (e) { /* ignore */ }
+        // Panggilan KRUSIAL ini memberi tahu Warpcast bahwa Mini App siap
+        await farcaster.actions.ready();
+        // console.log("Farcaster Mini App is ready.");
 
-      try {
+        // Sekarang, coba dapatkan konteks pengguna
         const context = await farcaster.context;
-        if (context && context.user) {
-            setFarcasterUser(context.user);
+        if (context?.user) {
+          setFarcasterUser(context.user);
+          // console.log("Farcaster User Context loaded:", context.user);
+        } else {
+          // console.log("Farcaster user context not available.");
         }
       } catch (error) {
-          console.log("Gagal mengambil context user (normal di browser).");
+        // console.error("Farcaster SDK initialization failed:", error);
       }
-      // isFarcasterLoaded sudah true secara default, jadi aman.
     };
-    initFarcaster();
-  }, []);
 
+    initFarcasterSDK();
+  }, []); // Array dependensi kosong agar hanya berjalan sekali saat komponen dimuat
+
+  // ==========================================
+  // LOGIKA GAME
+  // ==========================================
   const jump = () => {
     if (isGameOver) return;
     if (!gameStarted) setGameStarted(true);
@@ -106,61 +90,45 @@ export default function FlappyBasedLeaderboardFinalComplete() {
   };
 
   const resetGame = () => {
-    gameState.current = {
-      birdY: GAME_HEIGHT / 2,
-      birdVelocity: 0,
-      pipes: [],
-      lastPipeSpawn: 0,
-    };
-    setScore(0);
-    setIsGameOver(false);
-    setGameStarted(false);
-    setIsSubmitting(false);
-    setIsSubmitted(false);
+    gameState.current = { birdY: GAME_HEIGHT / 2, birdVelocity: 0, pipes: [], lastPipeSpawn: 0 };
+    setScore(0); setIsGameOver(false); setGameStarted(false); setIsSubmitting(false); setIsSubmitted(false);
   };
 
-
-  // ==========================================
-  // BAGIAN 5: GAME LOOP & UI
-  // ==========================================
   useEffect(() => {
-    // PENTING: Cek canvasRef.current dulu sebelum akses
     const canvas = canvasRef.current;
-    if (!canvas) return; 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
 
     let animationFrameId: number;
 
     const gameLoop = (timestamp: number) => {
       if (isGameOver) return;
 
+      // --- TAMPILAN AWAL (START SCREEN) ---
       if (!gameStarted) {
          ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+         // Latar belakang biru cerah untuk area game
          ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
          ctx.fillStyle = 'white';
-         if (farcasterUser) {
-            ctx.font = '16px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(`Hi, @${farcasterUser.username}!`, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 50);
-         }
-         ctx.font = 'bold 24px sans-serif';
+         
+         ctx.font = 'bold 28px sans-serif';
          ctx.textAlign = 'center';
          ctx.fillText('FLAPPY BASED', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20);
-         ctx.font = '16px sans-serif';
-         ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
+         
+         ctx.font = '18px sans-serif';
+         ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30);
          animationFrameId = requestAnimationFrame(gameLoop);
          return;
       }
 
+      // --- LOGIKA GAME BERJALAN ---
       const state = gameState.current;
       state.birdVelocity += GRAVITY;
-      state.birdY += state.birdVelocity;
+      state.birdY += state.birdY;
 
       if (timestamp - state.lastPipeSpawn > PIPE_SPAWN_RATE) {
-        const minTopPipeHeight = 50;
-        const maxTopPipeHeight = GAME_HEIGHT - GAP_SIZE - 150;
-        const topHeight = Math.random() * (maxTopPipeHeight - minTopPipeHeight) + minTopPipeHeight;
+        const minTop = 50; const maxTop = GAME_HEIGHT - GAP_SIZE - 150;
+        const topHeight = Math.random() * (maxTop - minTop) + minTop;
         state.pipes.push({ x: GAME_WIDTH, topHeight, passed: false });
         state.lastPipeSpawn = timestamp;
       }
@@ -171,30 +139,31 @@ export default function FlappyBasedLeaderboardFinalComplete() {
         const hitTop = birdX + birdSize > pipe.x && birdX < pipe.x + pipeWidth && state.birdY < pipe.topHeight;
         const hitBottom = birdX + birdSize > pipe.x && birdX < pipe.x + pipeWidth && state.birdY + birdSize > pipe.topHeight + GAP_SIZE;
         if (hitTop || hitBottom) setIsGameOver(true);
-
-        if (!pipe.passed && birdX > pipe.x + pipeWidth) {
-            setScore(prev => prev + 1);
-            pipe.passed = true;
-        }
+        if (!pipe.passed && birdX > pipe.x + pipeWidth) { setScore(p => p + 1); pipe.passed = true; }
         if (pipe.x + pipeWidth < -10) state.pipes.splice(index, 1);
       });
 
       if (state.birdY > GAME_HEIGHT - 30 || state.birdY < -50) setIsGameOver(true);
 
+      // --- MENGGAMBAR (RENDERING) ---
       ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0038AB'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20);
+      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Langit Biru
+      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20); // Tanah (Biru lebih tua)
+      
+      // Pipa (Putih)
       ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
       state.pipes.forEach(pipe => {
-          ctx.fillRect(pipe.x, 0, 52, pipe.topHeight); ctx.strokeRect(pipe.x, 0, 52, pipe.topHeight);
-          ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT); ctx.strokeRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
+          ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
+          ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
       });
+      
+      // Burung (Kuning/Oranye)
       ctx.fillStyle = '#FCD34D'; ctx.beginPath(); ctx.arc(50 + 12, state.birdY + 12, 12, 0, 2 * Math.PI); ctx.fill();
-      ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(50 + 18, state.birdY + 8, 3, 0, 2 * Math.PI); ctx.fill();
-
+      
+      // Skor saat bermain
       if (gameStarted && !isGameOver) {
-        ctx.fillStyle = 'white'; ctx.strokeStyle = 'black'; ctx.lineWidth = 2; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(score.toString(), GAME_WIDTH / 2, 80); ctx.strokeText(score.toString(), GAME_WIDTH / 2, 80);
+        ctx.fillStyle = 'white'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(score.toString(), GAME_WIDTH / 2, 80);
       }
 
       if (!isGameOver) animationFrameId = requestAnimationFrame(gameLoop);
@@ -202,72 +171,30 @@ export default function FlappyBasedLeaderboardFinalComplete() {
 
     animationFrameId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isGameOver, gameStarted, score, isFarcasterLoaded, farcasterUser]);
+  }, [isGameOver, gameStarted, score, farcasterUser]);
 
+  // ==========================================
+  // TAMPILAN UTAMA (UI)
+  // ==========================================
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-4">
-      <h1 className="text-3xl font-bold mb-2 text-blue-400">Flappy Based</h1>
-      {farcasterUser && (
-         <p className="mb-4 text-sm text-slate-300">Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span></p>
-      )}
+    <main className="flex flex-col items-center justify-start pt-10 min-h-screen bg-[#0052FF] text-white p-4 overflow-hidden">
       
-      <div className="relative rounded-lg overflow-hidden shadow-2xl border-4 border-blue-500">
+      {/* HEADER: Judul dan Username */}
+      <div className="text-center mb-6 z-10">
+        <h1 className="text-4xl font-extrabold drop-shadow-md tracking-tight">
+          Flappy Based
+        </h1>
+        {farcasterUser && (
+           <p className="text-lg text-blue-100 mt-1 font-medium">
+             Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span>
+           </p>
+        )}
+      </div>
+      
+      {/* AREA GAME */}
+      <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF]">
         <canvas
           ref={canvasRef}
           width={GAME_WIDTH}
           height={GAME_HEIGHT}
-          onClick={jump}
-          className="cursor-pointer bg-blue-500 block"
-        />
-
-        {isGameOver && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4">
-            <p className="text-4xl text-red-500 font-bold mb-2">Game Over!</p>
-            
-            <div className="bg-slate-800 p-4 rounded-lg mb-6 text-center shadow-lg border border-slate-600 w-full max-w-[200px]">
-                <p className="text-sm text-slate-400">YOUR SCORE</p>
-                <p className="text-5xl font-bold text-white">{score}</p>
-            </div>
-            
-            <button 
-              onClick={resetGame}
-              className="w-full max-w-[200px] mb-3 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-full text-white font-bold transition-all active:scale-95"
-            >
-              Try Again 
-            </button>
-
-            <div className="mt-4 w-full max-w-[200px] text-center h-12 flex items-center justify-center">
-                {isSubmitting && (
-                    <p className="text-slate-400 animate-pulse flex items-center gap-2 justify-center">
-                      <span className="inline-block animate-spin">⏳</span> Sending Score...
-                    </p>
-                )}
-                {!isSubmitting && isSubmitted && farcasterUser && (
-                    <p className="text-green-400 font-bold flex items-center gap-2 justify-center">
-                      ✅ Saved to Leaderboard!
-                    </p>
-                )}
-                {!isSubmitting && !isSubmitted && !farcasterUser && score > 0 && (
-                    <p className="text-xs text-slate-500">(Score not saved: No Farcaster user detected)</p>
-                )}
-                {!isSubmitting && !isSubmitted && score === 0 && (
-                     <p className="text-xs text-slate-500">(Score 0 not saved)</p>
-                )}
-            </div>
-
-            {/* --- TOMBOL LINK KE LEADERBOARD --- */}
-            <div className="mt-2 w-full max-w-[200px]">
-                <Link 
-                  href="/leaderboard"
-                  className="w-full px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 rounded-full text-white font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg"
-                >
-                   <span>🏆</span> View Leaderboard
-                </Link>
-            </div>
-
-          </div>
-        )}
-      </div>
-    </main>
-  );
-}
+          onClick

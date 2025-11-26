@@ -6,13 +6,6 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
 // ==========================================
-// KONFIGURASI KUNCI RAHASIA (PENTING!)
-// ==========================================
-// GANTI STRING INI DENGAN WEBHOOK SECRET YANG SAMA PERSIS
-// YANG ADA DI FILE farcaster-domain.json DAN api/notifications/route.ts
-const WEBHOOK_SECRET_FOR_FRONTEND = 'zfcshqAgvcrHSfgmueYPNLjeaeK430nKSZLxtJYP9Ks=';
-
-// ==========================================
 // KONFIGURASI GAME
 // ==========================================
 const GAME_WIDTH = 320;
@@ -35,8 +28,6 @@ export default function FlappyBasedFinalUI() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  // State baru untuk melacak status pengiriman notifikasi
-  const [notificationStatus, setNotificationStatus] = useState<string>('');
 
   const gameState = useRef({
     birdY: GAME_HEIGHT / 2,
@@ -59,65 +50,20 @@ export default function FlappyBasedFinalUI() {
     if (!error) setIsSubmitted(true);
   }, [farcasterUser, isSubmitting, isSubmitted]);
 
-  // ==========================================
-  // FUNGSI NOTIFIKASI (BARU!)
-  // ==========================================
-  const sendNotification = useCallback(async (finalScore: number) => {
-    // Jangan kirim jika skor 0 atau user tidak dikenal
-    if (!farcasterUser?.fid || finalScore === 0) return;
-
-    setNotificationStatus('Sending notification...');
-
-    try {
-      const response = await fetch('/api/notifications', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Kirim secret di header untuk verifikasi di backend
-          'Authorization': `Bearer ${WEBHOOK_SECRET_FOR_FRONTEND}`,
-        },
-        body: JSON.stringify({
-          recipientFid: farcasterUser.fid, // Kirim ke FID pengguna yang sedang main
-          title: "Game Over!",
-          body: `Nice try @${farcasterUser.username}! You scored ${finalScore} in Flappy Based. Tap to play again!`,
-          url: 'https://flappy-based.vercel.app', // URL saat notifikasi diklik
-        }),
-      });
-
-      if (response.ok) {
-        setNotificationStatus('Notification sent!');
-        console.log('Notification sent successfully');
-      } else {
-        const errorData = await response.json();
-        setNotificationStatus(`Failed to send notification: ${errorData.message || response.statusText}`);
-        console.error('Failed to send notification', errorData);
-      }
-    } catch (error) {
-      setNotificationStatus('Error sending notification');
-      console.error('Error calling notification API', error);
-    }
-  }, [farcasterUser]);
-
-
-  // ==========================================
-  // EFFECT: MENANGANI GAME OVER
-  // ==========================================
   useEffect(() => {
-    if (isGameOver) {
-      // 1. Kirim skor ke database
-      sendScoreToSupabase(score);
-      // 2. Kirim notifikasi ke Farcaster (BARU!)
-      sendNotification(score);
-    }
-  }, [isGameOver, score, sendScoreToSupabase, sendNotification]);
+    if (isGameOver) sendScoreToSupabase(score);
+  }, [isGameOver, score, sendScoreToSupabase]);
 
   // ==========================================
-  // INISIALISASI FARCASTER SDK
+  // INISIALISASI FARCASTER SDK (PENTING!)
   // ==========================================
   useEffect(() => {
     const initFarcasterSDK = async () => {
       try {
+        // Panggilan ini penting agar Farcaster tahu Mini App siap
+        // dan bisa menampilkan prompt notifikasi bawaan jika belum diizinkan.
         await farcaster.actions.ready();
+        
         const context = await farcaster.context;
         if (context?.user) {
           setFarcasterUser(context.user);
@@ -146,7 +92,6 @@ export default function FlappyBasedFinalUI() {
     setGameStarted(false);
     setIsSubmitting(false);
     setIsSubmitted(false);
-    setNotificationStatus(''); // Reset status notifikasi
   };
 
   useEffect(() => {
@@ -270,12 +215,10 @@ export default function FlappyBasedFinalUI() {
               Try Again
             </button>
 
-            {/* Status Database & Notifikasi (DIUPDATE) */}
-            <div className="mt-2 flex flex-col items-center justify-center font-medium text-sm gap-1">
+            {/* Status Database */}
+            <div className="mt-2 h-8 flex items-center justify-center font-medium text-sm">
               {isSubmitting && <p className="text-blue-200 flex items-center gap-2"><span className="animate-spin">⏳</span> Saving score...</p>}
               {isSubmitted && <p className="text-green-400 flex items-center gap-2">✅ Score saved!</p>}
-              {/* Menampilkan status notifikasi */}
-              {notificationStatus && <p className="text-blue-200">{notificationStatus}</p>}
             </div>
 
             {/* Tombol Leaderboard */}

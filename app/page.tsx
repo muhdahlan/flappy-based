@@ -1,9 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import farcaster from '@farcaster/miniapp-sdk'; // Import Farcaster SDK
+import farcaster from '@farcaster/miniapp-sdk';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+
+// ==========================================
+// KONFIGURASI KUNCI RAHASIA (PENTING!)
+// ==========================================
+// GANTI STRING INI DENGAN WEBHOOK SECRET YANG SAMA PERSIS
+// YANG ADA DI FILE farcaster-domain.json DAN api/notifications/route.ts
+const WEBHOOK_SECRET_FOR_FRONTEND = 'zfcshqAgvcrHSfgmueYPNLjeaeK430nKSZLxtJYP9Ks=';
 
 // ==========================================
 // KONFIGURASI GAME
@@ -25,9 +32,11 @@ export default function FlappyBasedFinalUI() {
   const [score, setScore] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
   const [farcasterUser, setFarcasterUser] = useState<any>(null);
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  // State baru untuk melacak status pengiriman notifikasi
+  const [notificationStatus, setNotificationStatus] = useState<string>('');
 
   const gameState = useRef({
     birdY: GAME_HEIGHT / 2,
@@ -37,22 +46,70 @@ export default function FlappyBasedFinalUI() {
   });
 
   // ==========================================
-  // FUNGSI DATABASE & FARCASTER
+  // FUNGSI DATABASE
   // ==========================================
   const sendScoreToSupabase = useCallback(async (finalScore: number) => {
     if (!farcasterUser || finalScore === 0 || isSubmitting || isSubmitted) return;
     setIsSubmitting(true);
     const { error } = await supabase.from('scores').insert({
-        username: farcasterUser.username,
-        score: finalScore,
-      });
+      username: farcasterUser.username,
+      score: finalScore,
+    });
     setIsSubmitting(false);
     if (!error) setIsSubmitted(true);
   }, [farcasterUser, isSubmitting, isSubmitted]);
 
+  // ==========================================
+  // FUNGSI NOTIFIKASI (BARU!)
+  // ==========================================
+  const sendNotification = useCallback(async (finalScore: number) => {
+    // Jangan kirim jika skor 0 atau user tidak dikenal
+    if (!farcasterUser?.fid || finalScore === 0) return;
+
+    setNotificationStatus('Sending notification...');
+
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Kirim secret di header untuk verifikasi di backend
+          'Authorization': `Bearer ${WEBHOOK_SECRET_FOR_FRONTEND}`,
+        },
+        body: JSON.stringify({
+          recipientFid: farcasterUser.fid, // Kirim ke FID pengguna yang sedang main
+          title: "Game Over!",
+          body: `Nice try @${farcasterUser.username}! You scored ${finalScore} in Flappy Based. Tap to play again!`,
+          url: 'https://flappy-based.vercel.app', // URL saat notifikasi diklik
+        }),
+      });
+
+      if (response.ok) {
+        setNotificationStatus('Notification sent!');
+        console.log('Notification sent successfully');
+      } else {
+        const errorData = await response.json();
+        setNotificationStatus(`Failed to send notification: ${errorData.message || response.statusText}`);
+        console.error('Failed to send notification', errorData);
+      }
+    } catch (error) {
+      setNotificationStatus('Error sending notification');
+      console.error('Error calling notification API', error);
+    }
+  }, [farcasterUser]);
+
+
+  // ==========================================
+  // EFFECT: MENANGANI GAME OVER
+  // ==========================================
   useEffect(() => {
-    if (isGameOver) sendScoreToSupabase(score);
-  }, [isGameOver, score, sendScoreToSupabase]);
+    if (isGameOver) {
+      // 1. Kirim skor ke database
+      sendScoreToSupabase(score);
+      // 2. Kirim notifikasi ke Farcaster (BARU!)
+      sendNotification(score);
+    }
+  }, [isGameOver, score, sendScoreToSupabase, sendNotification]);
 
   // ==========================================
   // INISIALISASI FARCASTER SDK
@@ -60,25 +117,18 @@ export default function FlappyBasedFinalUI() {
   useEffect(() => {
     const initFarcasterSDK = async () => {
       try {
-        // Panggilan KRUSIAL ini memberi tahu Warpcast bahwa Mini App siap
         await farcaster.actions.ready();
-        // console.log("Farcaster Mini App is ready.");
-
-        // Sekarang, coba dapatkan konteks pengguna
         const context = await farcaster.context;
         if (context?.user) {
           setFarcasterUser(context.user);
-          // console.log("Farcaster User Context loaded:", context.user);
-        } else {
-          // console.log("Farcaster user context not available.");
+          console.log("Farcaster User Context loaded:", context.user);
         }
       } catch (error) {
-        // console.error("Farcaster SDK initialization failed:", error);
+        console.error("Farcaster SDK initialization failed:", error);
       }
     };
-
     initFarcasterSDK();
-  }, []); // Array dependensi kosong agar hanya berjalan sekali saat komponen dimuat
+  }, []);
 
   // ==========================================
   // LOGIKA GAME
@@ -91,7 +141,12 @@ export default function FlappyBasedFinalUI() {
 
   const resetGame = () => {
     gameState.current = { birdY: GAME_HEIGHT / 2, birdVelocity: 0, pipes: [], lastPipeSpawn: 0 };
-    setScore(0); setIsGameOver(false); setGameStarted(false); setIsSubmitting(false); setIsSubmitted(false);
+    setScore(0);
+    setIsGameOver(false);
+    setGameStarted(false);
+    setIsSubmitting(false);
+    setIsSubmitted(false);
+    setNotificationStatus(''); // Reset status notifikasi
   };
 
   useEffect(() => {
@@ -106,26 +161,23 @@ export default function FlappyBasedFinalUI() {
 
       // --- TAMPILAN AWAL (START SCREEN) ---
       if (!gameStarted) {
-         ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-         // Latar belakang biru cerah untuk area game
-         ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-         ctx.fillStyle = 'white';
-         
-         ctx.font = 'bold 28px sans-serif';
-         ctx.textAlign = 'center';
-         ctx.fillText('FLAPPY BASED', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20);
-         
-         ctx.font = '18px sans-serif';
-         ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30);
-         animationFrameId = requestAnimationFrame(gameLoop);
-         return;
+        ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('FLAPPY BASED', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20);
+        ctx.font = '18px sans-serif';
+        ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30);
+        animationFrameId = requestAnimationFrame(gameLoop);
+        return;
       }
 
       // --- LOGIKA GAME BERJALAN ---
       const state = gameState.current;
       state.birdVelocity += GRAVITY;
-      state.birdY += state.birdVelocity; // <--- BARIS INI SUDAH DIKOREKSI
-      
+      state.birdY += state.birdVelocity;
+
       if (timestamp - state.lastPipeSpawn > PIPE_SPAWN_RATE) {
         const minTop = 50; const maxTop = GAME_HEIGHT - GAP_SIZE - 150;
         const topHeight = Math.random() * (maxTop - minTop) + minTop;
@@ -149,17 +201,17 @@ export default function FlappyBasedFinalUI() {
       ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
       ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Langit Biru
       ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20); // Tanah (Biru lebih tua)
-      
+
       // Pipa (Putih)
       ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
       state.pipes.forEach(pipe => {
-          ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
-          ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
+        ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
+        ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
       });
-      
+
       // Burung (Kuning/Oranye)
       ctx.fillStyle = '#FCD34D'; ctx.beginPath(); ctx.arc(50 + 12, state.birdY + 12, 12, 0, 2 * Math.PI); ctx.fill();
-      
+
       // Skor saat bermain
       if (gameStarted && !isGameOver) {
         ctx.fillStyle = 'white'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
@@ -178,19 +230,19 @@ export default function FlappyBasedFinalUI() {
   // ==========================================
   return (
     <main className="flex flex-col items-center justify-start pt-10 min-h-screen bg-[#0052FF] text-white p-4 overflow-hidden">
-      
+
       {/* HEADER: Judul dan Username */}
       <div className="text-center mb-6 z-10">
         <h1 className="text-4xl font-extrabold drop-shadow-md tracking-tight">
           Flappy Based
         </h1>
         {farcasterUser && (
-           <p className="text-lg text-blue-100 mt-1 font-medium">
-             Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span>
-           </p>
+          <p className="text-lg text-blue-100 mt-1 font-medium">
+            Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span>
+          </p>
         )}
       </div>
-      
+
       {/* AREA GAME */}
       <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF]">
         <canvas
@@ -205,33 +257,35 @@ export default function FlappyBasedFinalUI() {
         {isGameOver && (
           <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center z-20 p-4 backdrop-blur-sm">
             <p className="text-5xl text-white font-extrabold mb-4 drop-shadow-lg">Game Over!</p>
-            
+
             <div className="bg-white/10 p-6 rounded-xl mb-6 text-center shadow-lg border border-white/20 w-full max-w-[220px]">
-                <p className="text-sm text-blue-200 uppercase tracking-wider font-bold">Your Score</p>
-                <p className="text-6xl font-black text-white mt-1">{score}</p>
+              <p className="text-sm text-blue-200 uppercase tracking-wider font-bold">Your Score</p>
+              <p className="text-6xl font-black text-white mt-1">{score}</p>
             </div>
-            
-            <button 
+
+            <button
               onClick={resetGame}
               className="w-full max-w-[220px] mb-3 px-6 py-4 bg-white text-[#0052FF] hover:bg-blue-50 rounded-xl font-bold text-lg transition-all active:scale-95 shadow-md"
             >
-              Try Again 
+              Try Again
             </button>
 
-            {/* Status Database */}
-            <div className="mt-2 h-8 flex items-center justify-center font-medium">
-                {isSubmitting && <p className="text-blue-200 flex items-center gap-2"><span className="animate-spin">⏳</span> Sending...</p>}
-                {isSubmitted && <p className="text-green-400 flex items-center gap-2">✅ Saved!</p>}
+            {/* Status Database & Notifikasi (DIUPDATE) */}
+            <div className="mt-2 flex flex-col items-center justify-center font-medium text-sm gap-1">
+              {isSubmitting && <p className="text-blue-200 flex items-center gap-2"><span className="animate-spin">⏳</span> Saving score...</p>}
+              {isSubmitted && <p className="text-green-400 flex items-center gap-2">✅ Score saved!</p>}
+              {/* Menampilkan status notifikasi */}
+              {notificationStatus && <p className="text-blue-200">{notificationStatus}</p>}
             </div>
 
             {/* Tombol Leaderboard */}
             <div className="mt-4 w-full max-w-[220px]">
-                <Link 
-                  href="/leaderboard"
-                  className="w-full px-6 py-4 bg-[#0047CC] hover:bg-[#003DB3] rounded-xl text-white font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md border border-white/20"
-                >
-                   <span>🏆</span> Leaderboard
-                </Link>
+              <Link
+                href="/leaderboard"
+                className="w-full px-6 py-4 bg-[#0047CC] hover:bg-[#003DB3] rounded-xl text-white font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md border border-white/20"
+              >
+                <span>🏆</span> Leaderboard
+              </Link>
             </div>
           </div>
         )}

@@ -1,0 +1,8 @@
+{
+  "domain": "flappy-based.vercel.app",
+  "notification": {
+    "notificationEndpoint": "https://flappy-based.vercel.app/api/notifications",
+    "webhookSecret": "zfcshqAgvcrHSfgmueYPNLjeaeK430nKSZLxtJYP9Ks="
+  },
+  "version": "1"
+}

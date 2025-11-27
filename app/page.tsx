@@ -18,6 +18,7 @@ const GAP_SIZE = 140; // Celah diperbesar untuk karakter burung
 const BIRD_SIZE = 40; // Ukuran burung
 
 // URL gambar burung dari logo Farcaster (harus domain publik yang aman)
+// GANTI URL INI DENGAN URL GAMBAR BURUNG TRANSPARAN ANDA
 const BIRD_IMAGE_URL = 'https://imagedelivery.net/BXluQx4igeBGuW0Ia56BHw/f3975231-3886-426a-e152-67813b4a9200/rectcrop';
 
 export default function FlappyBasedFinalUI() {

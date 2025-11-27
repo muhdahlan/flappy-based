@@ -8,16 +8,16 @@ import Link from 'next/link';
 // ==========================================
 // KONFIGURASI GAME
 // ==========================================
-const GAME_WIDTH = 360; // Lebar sedikit ditambah
-const GAME_HEIGHT = 640; // Tinggi game diperbesar agar lebih luas
+const GAME_WIDTH = 360; // Lebar standar
+const GAME_HEIGHT = 500; // TINGGI DIUBAH: Dikurangi agar tidak terlalu ke bawah
 const GRAVITY = 0.25;
 const JUMP = -4.5;
 const PIPE_SPEED = 2;
 const PIPE_SPAWN_RATE = 1500;
-const GAP_SIZE = 140; // Celah diperbesar untuk karakter burung
-const BIRD_SIZE = 40; // Ukuran burung
+const GAP_SIZE = 140; // Celah antar pipa
+const BIRD_SIZE = 40; // Ukuran bola/burung
 
-// URL gambar burung dari logo Farcaster (harus domain publik yang aman)
+// URL gambar burung (opsional, jika gagal akan pakai bola kuning)
 const BIRD_IMAGE_URL = 'https://imagedelivery.net/BXluQx4igeBGuW0Ia56BHw/f3975231-3886-426a-e152-67813b4a9200/rectcrop';
 
 export default function FlappyBasedFinalUI() {
@@ -25,7 +25,7 @@ export default function FlappyBasedFinalUI() {
   // STATE & REFS
   // ==========================================
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const birdImageRef = useRef<HTMLImageElement | null>(null); // Ref untuk gambar burung
+  const birdImageRef = useRef<HTMLImageElement | null>(null);
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
@@ -33,7 +33,6 @@ export default function FlappyBasedFinalUI() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [notificationStatus, setNotificationStatus] = useState<string>('');
 
   const gameState = useRef({
     birdY: GAME_HEIGHT / 2,
@@ -43,7 +42,7 @@ export default function FlappyBasedFinalUI() {
   });
 
   // ==========================================
-  // PRELOAD GAMBAR BURUNG
+  // PRELOAD GAMBAR
   // ==========================================
   useEffect(() => {
     const img = new Image();
@@ -54,7 +53,7 @@ export default function FlappyBasedFinalUI() {
   }, []);
 
   // ==========================================
-  // FUNGSI DATABASE & NOTIFIKASI
+  // FUNGSI DATABASE & FARCASTER
   // ==========================================
   const sendScoreToSupabase = useCallback(async (finalScore: number) => {
     if (!farcasterUser || finalScore === 0 || isSubmitting || isSubmitted) return;
@@ -68,22 +67,14 @@ export default function FlappyBasedFinalUI() {
     if (!error) setIsSubmitted(true);
   }, [farcasterUser, isSubmitting, isSubmitted]);
 
-  // ==========================================
-  // FUNGSI SHARE SCORE
-  // ==========================================
   const shareScore = useCallback(() => {
     if (!farcasterUser) return;
     const text = `I just scored ${score} in Flappy Based! Can you beat my score? @${farcasterUser.username} #FlappyBased #Farcaster`;
-    const embedUrl = 'https://flappy-based.vercel.app'; // Ganti dengan URL produksi Anda
+    const embedUrl = 'https://flappy-based.vercel.app';
     const shareUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(embedUrl)}`;
-    
-    // Buka Warpcast composer
     farcaster.actions.openUrl(shareUrl);
   }, [score, farcasterUser]);
 
-  // ==========================================
-  // INISIALISASI FARCASTER SDK
-  // ==========================================
   useEffect(() => {
     const initFarcasterSDK = async () => {
       try {
@@ -91,7 +82,6 @@ export default function FlappyBasedFinalUI() {
         const context = await farcaster.context;
         if (context?.user) {
           setFarcasterUser(context.user);
-          console.log("Farcaster User Context loaded:", context.user);
         }
       } catch (error) {
         console.error("Farcaster SDK initialization failed:", error);
@@ -145,24 +135,30 @@ export default function FlappyBasedFinalUI() {
         ctx.font = '18px sans-serif';
         ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
         
-        // Gambar burung di layar awal
         if (birdImageRef.current) {
           const birdX = GAME_WIDTH / 2 - BIRD_SIZE / 2;
           const birdY = GAME_HEIGHT / 2 - 100;
           ctx.drawImage(birdImageRef.current, birdX, birdY, BIRD_SIZE, BIRD_SIZE);
+        } else {
+          ctx.fillStyle = '#FCD34D'; ctx.beginPath();
+          ctx.arc(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 80, BIRD_SIZE / 2, 0, 2 * Math.PI);
+          ctx.fill();
         }
 
         animationFrameId = requestAnimationFrame(gameLoop);
         return;
       }
 
-      // --- LOGIKA GAME ---
+      // --- LOGIKA UPDATE ---
       const state = gameState.current;
       state.birdVelocity += GRAVITY;
       state.birdY += state.birdVelocity;
 
+      // LOGIKA PIPA BARU: Memastikan pipa selalu bisa dilewati
       if (timestamp - state.lastPipeSpawn > PIPE_SPAWN_RATE) {
-        const minTop = 50; const maxTop = GAME_HEIGHT - GAP_SIZE - 150;
+        const minTop = 50;
+        // maxTop dihitung agar selalu ada ruang minimal 60px di bawah pipa bawah
+        const maxTop = GAME_HEIGHT - GAP_SIZE - 60; 
         const topHeight = Math.random() * (maxTop - minTop) + minTop;
         state.pipes.push({ x: GAME_WIDTH, topHeight, passed: false });
         state.lastPipeSpawn = timestamp;
@@ -170,7 +166,6 @@ export default function FlappyBasedFinalUI() {
 
       state.pipes.forEach((pipe, index) => {
         pipe.x -= PIPE_SPEED;
-        // Hitbox burung (sedikit lebih kecil dari gambarnya agar adil)
         const birdHitboxSize = BIRD_SIZE * 0.8;
         const birdX = 50 + (BIRD_SIZE - birdHitboxSize) / 2;
         const birdY = state.birdY + (BIRD_SIZE - birdHitboxSize) / 2;
@@ -188,27 +183,23 @@ export default function FlappyBasedFinalUI() {
 
       // --- RENDERING ---
       ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Langit
-      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20); // Tanah
+      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20);
 
-      // Pipa
       ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
       state.pipes.forEach(pipe => {
         ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
         ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
       });
 
-      // Burung (Gambar)
       if (birdImageRef.current) {
         ctx.drawImage(birdImageRef.current, 50, state.birdY, BIRD_SIZE, BIRD_SIZE);
       } else {
-        // Fallback jika gambar belum termuat
         ctx.fillStyle = '#FCD34D'; ctx.beginPath(); 
         ctx.arc(50 + BIRD_SIZE/2, state.birdY + BIRD_SIZE/2, BIRD_SIZE/2, 0, 2 * Math.PI); 
         ctx.fill();
       }
 
-      // Skor
       if (gameStarted && !isGameOver) {
         ctx.fillStyle = 'white'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(score.toString(), GAME_WIDTH / 2, 80);
@@ -226,12 +217,8 @@ export default function FlappyBasedFinalUI() {
   // ==========================================
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-[#0052FF] text-white p-4 overflow-hidden">
-
-      {/* HEADER */}
       <div className="w-full max-w-[360px] flex flex-col items-center mb-4 z-10 px-2">
-        <h1 className="text-3xl font-extrabold drop-shadow-md tracking-tight">
-          Flappy Based
-        </h1>
+        <h1 className="text-3xl font-extrabold drop-shadow-md tracking-tight">Flappy Based</h1>
         {farcasterUser && (
           <p className="text-sm text-blue-100 mt-1 font-medium">
             Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span>
@@ -239,7 +226,7 @@ export default function FlappyBasedFinalUI() {
         )}
       </div>
 
-      {/* AREA GAME */}
+      {/* Container Game dengan ukuran baru */}
       <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF]" style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}>
         <canvas
           ref={canvasRef}
@@ -249,43 +236,18 @@ export default function FlappyBasedFinalUI() {
           className="cursor-pointer block"
         />
 
-        {/* OVERLAY GAME OVER */}
         {isGameOver && (
           <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20 p-6 backdrop-blur-sm">
             <p className="text-4xl text-white font-extrabold mb-2 drop-shadow-lg">Game Over!</p>
-
             <div className="bg-white/10 p-4 rounded-xl mb-4 text-center shadow-lg border border-white/20 w-full max-w-[240px]">
               <p className="text-sm text-blue-200 uppercase tracking-wider font-bold">Your Score</p>
               <p className="text-6xl font-black text-white mt-1">{score}</p>
             </div>
-
-            {/* Tombol Try Again */}
-            <button
-              onClick={resetGame}
-              className="w-full max-w-[240px] mb-3 px-6 py-3 bg-white text-[#0052FF] hover:bg-blue-50 rounded-xl font-bold text-lg transition-all active:scale-95 shadow-md"
-            >
-              Try Again
-            </button>
-
-            {/* Tombol Share Score (BARU!) */}
-            <button
-              onClick={shareScore}
-              className="w-full max-w-[240px] mb-3 px-6 py-3 bg-[#0047CC] hover:bg-[#003DB3] rounded-xl text-white font-bold text-lg transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 border border-white/20"
-            >
-              <span>📤</span> Share Score
-            </button>
-
-            {/* Tombol Leaderboard */}
+            <button onClick={resetGame} className="w-full max-w-[240px] mb-3 px-6 py-3 bg-white text-[#0052FF] hover:bg-blue-50 rounded-xl font-bold text-lg">Try Again</button>
+            <button onClick={shareScore} className="w-full max-w-[240px] mb-3 px-6 py-3 bg-[#0047CC] hover:bg-[#003DB3] rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2 border border-white/20"><span>📤</span> Share Score</button>
             <div className="w-full max-w-[240px]">
-              <Link
-                href="/leaderboard"
-                className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md border border-white/20"
-              >
-                <span>🏆</span> Leaderboard
-              </Link>
+              <Link href="/leaderboard" className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold flex items-center justify-center gap-2 border border-white/20"><span>🏆</span> Leaderboard</Link>
             </div>
-            
-            {/* Status Database */}
             <div className="mt-3 h-6 flex items-center justify-center font-medium text-sm">
               {isSubmitting && <p className="text-blue-200 flex items-center gap-2"><span className="animate-spin">⏳</span> Saving score...</p>}
               {isSubmitted && <p className="text-green-400 flex items-center gap-2">✅ Score saved!</p>}

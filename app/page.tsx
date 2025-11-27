@@ -8,54 +8,81 @@ import Link from 'next/link';
 // ==========================================
 // KONFIGURASI GAME
 // ==========================================
-const GAME_WIDTH = 360; // Lebar sedikit ditambah
-const GAME_HEIGHT = 640; // Tinggi game diperbesar agar lebih luas
+// Ini adalah resolusi internal kanvas (untuk logika game)
+const GAME_WIDTH_INTERNAL = 360;
+const GAME_HEIGHT_INTERNAL = 640;
+
+// Konstanta Fisika & Gameplay (Disesuaikan dengan resolusi internal)
 const GRAVITY = 0.25;
-const JUMP = -4.5;
+const JUMP_STRENGTH = -4.5;
 const PIPE_SPEED = 2;
 const PIPE_SPAWN_RATE = 1500;
-const GAP_SIZE = 140; // Celah diperbesar untuk karakter burung
-const BIRD_SIZE = 40; // Ukuran burung
+const GAP_SIZE = 140;
+const BIRD_SIZE = 40; // Ukuran burung dalam piksel internal
+const PIPE_WIDTH = 52;
 
-// URL gambar burung (menggunakan URL dari Postimage yang Anda berikan)
-const BIRD_IMAGE_URL = 'https://i.postimg.cc/yDRH3Yzb/449629522-122153685344220908-2606213258427399354-n.jpg';
+// URL Gambar Burung (URL BARU DARI POSTIMAGE)
+const BIRD_IMAGE_URL = 'https://i.postimg.cc/fSky0tZw/449629522-122153685344220908-2606213258427399354-n.png';
 
-export default function FlappyBasedFinalUI() {
-  // ==========================================
-  // STATE & REFS
-  // ==========================================
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const birdImageRef = useRef<HTMLImageElement | null>(null); // Ref untuk gambar burung
+// Tipe data pipa
+interface Pipe {
+  x: number;
+  topHeight: number;
+  passed: boolean;
+}
+
+export default function FlappyBasedPage() {
+  // --- STATE & REFS (UI & LOGIKA) ---
+  const birdImageRef = useRef<HTMLImageElement | null>(null);
+  // State dummy untuk memicu re-render saat gambar siap
+  const [, setForceRender] = useState(false);
+  
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
   const [farcasterUser, setFarcasterUser] = useState<any>(null);
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [notificationStatus, setNotificationStatus] = useState<string>('');
 
-  const gameState = useRef({
-    birdY: GAME_HEIGHT / 2,
+  // --- REFS UNTUK GAME LOOP (CANVAS) ---
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // State game yang berubah cepat disimpan di ref untuk performa (ANTI-LAG)
+  const gameStateRef = useRef({
+    birdY: GAME_HEIGHT_INTERNAL / 2,
     birdVelocity: 0,
-    pipes: [] as { x: number; topHeight: number; passed: boolean }[],
-    lastPipeSpawn: 0,
+    pipes: [] as Pipe[],
+    lastPipeSpawnTime: 0,
+    score: 0,
   });
+  const requestRef = useRef<number>();
 
   // ==========================================
-  // PRELOAD GAMBAR BURUNG
+  // BAGIAN 1: INISIALISASI & DATABASE
   // ==========================================
+
+  // Memuat Gambar Burung
   useEffect(() => {
     const img = new Image();
     img.src = BIRD_IMAGE_URL;
     img.onload = () => {
       birdImageRef.current = img;
+      setForceRender(prev => !prev); // Picu re-render agar tampilan awal muncul
     };
   }, []);
 
-  // ==========================================
-  // FUNGSI DATABASE & NOTIFIKASI
-  // ==========================================
+  // Inisialisasi Farcaster
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await farcaster.actions.ready();
+        const ctx = await farcaster.context;
+        if (ctx?.user) setFarcasterUser(ctx.user);
+      } catch (e) console.error(e);
+    };
+    init();
+  }, []);
+
+  // Fungsi Kirim Skor
   const sendScoreToSupabase = useCallback(async (finalScore: number) => {
     if (!farcasterUser || finalScore === 0 || isSubmitting || isSubmitted) return;
     setIsSubmitting(true);
@@ -68,224 +95,193 @@ export default function FlappyBasedFinalUI() {
     if (!error) setIsSubmitted(true);
   }, [farcasterUser, isSubmitting, isSubmitted]);
 
-  // ==========================================
-  // FUNGSI SHARE SCORE
-  // ==========================================
-  const shareScore = useCallback(() => {
-    if (!farcasterUser) return;
-    const text = `I just scored ${score} in Flappy Based! Can you beat my score? @${farcasterUser.username} #FlappyBased #Farcaster`;
-    const embedUrl = 'https://flappy-based.vercel.app'; // Ganti dengan URL produksi Anda
-    const shareUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(embedUrl)}`;
-    
-    // Buka Warpcast composer
-    farcaster.actions.openUrl(shareUrl);
-  }, [score, farcasterUser]);
-
-  // ==========================================
-  // INISIALISASI FARCASTER SDK
-  // ==========================================
+  // Kirim skor saat game over
   useEffect(() => {
-    const initFarcasterSDK = async () => {
-      try {
-        await farcaster.actions.ready();
-        const context = await farcaster.context;
-        if (context?.user) {
-          setFarcasterUser(context.user);
-          console.log("Farcaster User Context loaded:", context.user);
-        }
-      } catch (error) {
-        console.error("Farcaster SDK initialization failed:", error);
-      }
-    };
-    initFarcasterSDK();
-  }, []);
+    if (isGameOver && score > 0) sendScoreToSupabase(score);
+  }, [isGameOver, score, sendScoreToSupabase]);
+
 
   // ==========================================
-  // LOGIKA GAME
+  // BAGIAN 2: LOGIKA GAME LOOP (CANVAS)
   // ==========================================
+
   const jump = () => {
     if (isGameOver) return;
     if (!gameStarted) setGameStarted(true);
-    gameState.current.birdVelocity = JUMP;
+    gameStateRef.current.birdVelocity = JUMP_STRENGTH;
   };
 
-  const resetGame = () => {
-    gameState.current = { birdY: GAME_HEIGHT / 2, birdVelocity: 0, pipes: [], lastPipeSpawn: 0 };
-    setScore(0);
-    setIsGameOver(false);
-    setGameStarted(false);
-    setIsSubmitting(false);
-    setIsSubmitted(false);
-  };
-
-  useEffect(() => {
-    if (isGameOver && score > 0) {
-      sendScoreToSupabase(score);
-    }
-  }, [isGameOver, score, sendScoreToSupabase]);
-
-  useEffect(() => {
+  const gameLoop = (time: number) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
+    if (isGameOver || !canvas || !ctx) return;
 
-    let animationFrameId: number;
+    const state = gameStateRef.current;
 
-    const gameLoop = (timestamp: number) => {
-      if (isGameOver) return;
-
-      // --- TAMPILAN AWAL ---
-      if (!gameStarted) {
-        ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 28px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('FLAPPY BASED', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
-        ctx.font = '18px sans-serif';
-        ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-        
-        // Gambar burung di layar awal
-        if (birdImageRef.current) {
-          const birdX = GAME_WIDTH / 2 - BIRD_SIZE / 2;
-          const birdY = GAME_HEIGHT / 2 - 100;
-          ctx.drawImage(birdImageRef.current, birdX, birdY, BIRD_SIZE, BIRD_SIZE);
-        }
-
-        animationFrameId = requestAnimationFrame(gameLoop);
-        return;
-      }
-
-      // --- LOGIKA GAME ---
-      const state = gameState.current;
+    // --- UPDATE FISIKA ---
+    if (gameStarted) {
       state.birdVelocity += GRAVITY;
       state.birdY += state.birdVelocity;
 
-      if (timestamp - state.lastPipeSpawn > PIPE_SPAWN_RATE) {
-        const minTop = 50; const maxTop = GAME_HEIGHT - GAP_SIZE - 150;
-        const topHeight = Math.random() * (maxTop - minTop) + minTop;
-        state.pipes.push({ x: GAME_WIDTH, topHeight, passed: false });
-        state.lastPipeSpawn = timestamp;
+      // Cek Tabrakan Tanah/Langit
+      if (state.birdY + BIRD_SIZE >= GAME_HEIGHT_INTERNAL - 20 || state.birdY <= 0) {
+        setIsGameOver(true);
+        setScore(state.score);
       }
 
+      // Spawn Pipa
+      if (time - state.lastPipeSpawnTime > PIPE_SPAWN_RATE) {
+        const minTop = 50;
+        const maxTop = GAME_HEIGHT_INTERNAL - GAP_SIZE - 150; 
+        const topHeight = Math.random() * (maxTop - minTop) + minTop;
+        state.pipes.push({ x: GAME_WIDTH_INTERNAL, topHeight, passed: false });
+        state.lastPipeSpawnTime = time;
+      }
+
+      // Update Pipa & Cek Tabrakan
       state.pipes.forEach((pipe, index) => {
         pipe.x -= PIPE_SPEED;
-        // Hitbox burung (sedikit lebih kecil dari gambarnya agar adil)
-        const birdHitboxSize = BIRD_SIZE * 0.8;
-        const birdX = 50 + (BIRD_SIZE - birdHitboxSize) / 2;
-        const birdY = state.birdY + (BIRD_SIZE - birdHitboxSize) / 2;
-        const pipeWidth = 52;
-
-        const hitTop = birdX + birdHitboxSize > pipe.x && birdX < pipe.x + pipeWidth && birdY < pipe.topHeight;
-        const hitBottom = birdX + birdHitboxSize > pipe.x && birdX < pipe.x + pipeWidth && birdY + birdHitboxSize > pipe.topHeight + GAP_SIZE;
         
-        if (hitTop || hitBottom) setIsGameOver(true);
-        if (!pipe.passed && birdX > pipe.x + pipeWidth) { setScore(p => p + 1); pipe.passed = true; }
-        if (pipe.x + pipeWidth < -10) state.pipes.splice(index, 1);
+        const birdHitbox = BIRD_SIZE * 0.8;
+        const birdX = 50 + (BIRD_SIZE - birdHitbox) / 2;
+        const birdY = state.birdY + (BIRD_SIZE - birdHitbox) / 2;
+        const pipeRight = pipe.x + PIPE_WIDTH;
+
+        // AABB Collision
+        if (birdX + birdHitbox > pipe.x && birdX < pipeRight) {
+            if (birdY < pipe.topHeight || birdY + birdHitbox > pipe.topHeight + GAP_SIZE) {
+                setIsGameOver(true);
+                setScore(state.score);
+            }
+        }
+
+        // Update Skor
+        if (!pipe.passed && birdX > pipeRight) {
+          state.score += 1;
+          pipe.passed = true;
+          setScore(state.score);
+        }
+
+        // Hapus pipa lewat
+        if (pipe.x + PIPE_WIDTH < -50) state.pipes.splice(index, 1);
       });
+    }
 
-      if (state.birdY > GAME_HEIGHT - BIRD_SIZE || state.birdY < 0) setIsGameOver(true);
+    // --- RENDER CANVAS ---
+    ctx.clearRect(0, 0, GAME_WIDTH_INTERNAL, GAME_HEIGHT_INTERNAL);
+    ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH_INTERNAL, GAME_HEIGHT_INTERNAL); // Langit
+    
+    // Pipa
+    ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
+    state.pipes.forEach((pipe) => {
+        ctx.fillRect(pipe.x, 0, PIPE_WIDTH, pipe.topHeight);
+        ctx.strokeRect(pipe.x, 0, PIPE_WIDTH, pipe.topHeight);
+        ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, PIPE_WIDTH, GAME_HEIGHT_INTERNAL - (pipe.topHeight + GAP_SIZE));
+        ctx.strokeRect(pipe.x, pipe.topHeight + GAP_SIZE, PIPE_WIDTH, GAME_HEIGHT_INTERNAL - (pipe.topHeight + GAP_SIZE));
+    });
 
-      // --- RENDERING ---
-      ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Langit
-      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20); // Tanah
+     ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT_INTERNAL - 20, GAME_WIDTH_INTERNAL, 20); // Tanah
 
-      // Pipa
-      ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
-      state.pipes.forEach(pipe => {
-        ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
-        ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
-      });
+    // GAMBAR BURUNG (Pakai gambar yang sudah di-load)
+    if (birdImageRef.current) {
+      // Posisi X tetap di 50
+      ctx.drawImage(birdImageRef.current, 50, state.birdY, BIRD_SIZE, BIRD_SIZE);
+    } else {
+      // Fallback bola kuning
+      ctx.fillStyle = '#FCD34D'; ctx.beginPath();
+      ctx.arc(50 + BIRD_SIZE/2, state.birdY + BIRD_SIZE/2, BIRD_SIZE/2, 0, 2 * Math.PI);
+      ctx.fill();
+    }
 
-      // Burung (Gambar)
-      if (birdImageRef.current) {
-        ctx.drawImage(birdImageRef.current, 50, state.birdY, BIRD_SIZE, BIRD_SIZE);
-      } else {
-        // Fallback jika gambar belum termuat
-        ctx.fillStyle = '#FCD34D'; ctx.beginPath(); 
-        ctx.arc(50 + BIRD_SIZE/2, state.birdY + BIRD_SIZE/2, BIRD_SIZE/2, 0, 2 * Math.PI); 
-        ctx.fill();
-      }
+    if (!isGameOver) requestRef.current = requestAnimationFrame(gameLoop);
+  };
 
-      // Skor
-      if (gameStarted && !isGameOver) {
-        ctx.fillStyle = 'white'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(score.toString(), GAME_WIDTH / 2, 80);
-      }
+  // Kontrol Loop Utama
+  useEffect(() => {
+    if (!isGameOver) requestRef.current = requestAnimationFrame(gameLoop);
+    return () => { if (requestRef.current) cancelAnimationFrame(requestRef.current); };
+  }, [isGameOver]);
 
-      if (!isGameOver) animationFrameId = requestAnimationFrame(gameLoop);
+  // Reset Game State
+  const resetGame = () => {
+    setGameStarted(false);
+    setIsGameOver(false);
+    setScore(0);
+    setIsSubmitted(false);
+    // Reset ref
+    gameStateRef.current = {
+      birdY: GAME_HEIGHT_INTERNAL / 2, birdVelocity: 0, pipes: [], lastPipeSpawnTime: 0, score: 0,
     };
+  };
 
-    animationFrameId = requestAnimationFrame(gameLoop);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isGameOver, gameStarted, score, farcasterUser]);
 
   // ==========================================
-  // TAMPILAN UTAMA (UI)
+  // BAGIAN 3: TAMPILAN UTAMA (JSX)
   // ==========================================
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-[#0052FF] text-white p-4 overflow-hidden">
-
-      {/* HEADER */}
+      {/* Header */}
       <div className="w-full max-w-[360px] flex flex-col items-center mb-4 z-10 px-2">
-        <h1 className="text-3xl font-extrabold drop-shadow-md tracking-tight">
-          Flappy Based
-        </h1>
-        {farcasterUser && (
-          <p className="text-sm text-blue-100 mt-1 font-medium">
-            Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span>
-          </p>
-        )}
+        <h1 className="text-3xl font-extrabold drop-shadow-md tracking-tight">Flappy Based</h1>
+        {farcasterUser && <p className="text-sm mt-1 font-medium">Playing as: <span className="font-bold">@{farcasterUser.username}</span></p>}
       </div>
 
-      {/* AREA GAME */}
-      <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF]" style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}>
+      {/* Container Game (Lebar Responsif, Tinggi Tetap) */}
+      <div 
+        className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF] w-full max-w-[360px]"
+        // Tinggi container diatur menggunakan CSS aspect-ratio agar responsif namun tetap proporsional
+        style={{ aspectRatio: `${GAME_WIDTH_INTERNAL} / ${GAME_HEIGHT_INTERNAL}` }}
+      >
+        
+        {/* KANVAS GAME (LAYER PALING BAWAH) */}
         <canvas
-          ref={canvasRef}
-          width={GAME_WIDTH}
-          height={GAME_HEIGHT}
-          onClick={jump}
-          className="cursor-pointer block"
+            ref={canvasRef}
+            // Atribut width dan height ini adalah resolusi internal kanvas (360x640)
+            width={GAME_WIDTH_INTERNAL}
+            height={GAME_HEIGHT_INTERNAL}
+            onClick={jump}
+            // Class CSS 'w-full h-full' akan membuat kanvas meregang memenuhi container
+            className="cursor-pointer block absolute inset-0 w-full h-full"
+            style={{ touchAction: 'none' }}
         />
+        
+        {/* TAMPILAN AWAL (OVERLAY) */}
+        {!gameStarted && !isGameOver && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
+            <p className="text-2xl font-bold mb-4">FLAPPY BASED</p>
+            {birdImageRef.current && (
+              // Gambar di layar awal juga dibuat responsif
+              // eslint-disable-next-line @next/next/no-img-element
+              <img 
+                src={BIRD_IMAGE_URL} 
+                alt="Bird" 
+                // Ukuran tampilan diatur dengan CSS, bukan atribut width/height
+                className="mb-8 animate-bounce w-[20%] h-auto" 
+              />
+            )}
+            <p className="text-lg animate-pulse">Tap to Start</p>
+          </div>
+        )}
+
+        {/* SKOR SAAT BERMAIN (OVERLAY) */}
+        {gameStarted && !isGameOver && (
+          <div className="absolute top-4 left-0 right-0 text-center z-20 pointer-events-none">
+             <p className="text-5xl font-bold drop-shadow-md">{score}</p>
+          </div>
+        )}
 
         {/* OVERLAY GAME OVER */}
         {isGameOver && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20 p-6 backdrop-blur-sm">
+          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-30 p-6 backdrop-blur-sm">
             <p className="text-4xl text-white font-extrabold mb-2 drop-shadow-lg">Game Over!</p>
-
             <div className="bg-white/10 p-4 rounded-xl mb-4 text-center shadow-lg border border-white/20 w-full max-w-[240px]">
-              <p className="text-sm text-blue-200 uppercase tracking-wider font-bold">Your Score</p>
+              <p className="text-sm uppercase font-bold text-blue-200">Your Score</p>
               <p className="text-6xl font-black text-white mt-1">{score}</p>
             </div>
-
-            {/* Tombol Try Again */}
-            <button
-              onClick={resetGame}
-              className="w-full max-w-[240px] mb-3 px-6 py-3 bg-white text-[#0052FF] hover:bg-blue-50 rounded-xl font-bold text-lg transition-all active:scale-95 shadow-md"
-            >
-              Try Again
-            </button>
-
-            {/* Tombol Share Score (BARU!) */}
-            <button
-              onClick={shareScore}
-              className="w-full max-w-[240px] mb-3 px-6 py-3 bg-[#0047CC] hover:bg-[#003DB3] rounded-xl text-white font-bold text-lg transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 border border-white/20"
-            >
-              <span>📤</span> Share Score
-            </button>
-
-            {/* Tombol Leaderboard */}
-            <div className="w-full max-w-[240px]">
-              <Link
-                href="/leaderboard"
-                className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md border border-white/20"
-              >
-                <span>🏆</span> Leaderboard
-              </Link>
-            </div>
-            
-            {/* Status Database */}
+            <button onClick={resetGame} className="w-full max-w-[240px] mb-3 px-6 py-3 bg-white text-[#0052FF] hover:bg-blue-50 rounded-xl font-bold text-lg transition-all active:scale-95 shadow-md">Try Again</button>
+            <Link href="/leaderboard" className="w-full max-w-[240px] px-6 py-3 bg-[#0047CC] hover:bg-[#003DB3] rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md border border-white/20">
+              <span>🏆</span> Leaderboard
+            </Link>
             <div className="mt-3 h-6 flex items-center justify-center font-medium text-sm">
               {isSubmitting && <p className="text-blue-200 flex items-center gap-2"><span className="animate-spin">⏳</span> Saving score...</p>}
               {isSubmitted && <p className="text-green-400 flex items-center gap-2">✅ Score saved!</p>}

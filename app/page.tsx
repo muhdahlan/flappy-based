@@ -12,17 +12,14 @@ import Link from 'next/link';
 const GAME_WIDTH_INTERNAL = 360;
 const GAME_HEIGHT_INTERNAL = 640;
 
-// Konstanta Fisika & Gameplay (Disesuaikan dengan resolusi internal)
+// Konstanta Fisika & Gameplay
 const GRAVITY = 0.25;
 const JUMP_STRENGTH = -4.5;
 const PIPE_SPEED = 2;
 const PIPE_SPAWN_RATE = 1500;
 const GAP_SIZE = 140;
-const BIRD_SIZE = 40; // Ukuran burung dalam piksel internal
+const BIRD_SIZE = 40; // Diameter bola
 const PIPE_WIDTH = 52;
-
-// URL Gambar Burung (URL BARU DARI POSTIMAGE)
-const BIRD_IMAGE_URL = 'https://i.postimg.cc/fSky0tZw/449629522-122153685344220908-2606213258427399354-n.png';
 
 // Tipe data pipa
 interface Pipe {
@@ -33,10 +30,8 @@ interface Pipe {
 
 export default function FlappyBasedPage() {
   // --- STATE & REFS (UI & LOGIKA) ---
-  const birdImageRef = useRef<HTMLImageElement | null>(null);
-  // State dummy untuk memicu re-render saat gambar siap
-  const [, setForceRender] = useState(false);
-  
+  // KITA HAPUS SEMUA REF DAN STATE YANG BERHUBUNGAN DENGAN GAMBAR (birdImageRef, forceRender)
+
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
@@ -60,15 +55,7 @@ export default function FlappyBasedPage() {
   // BAGIAN 1: INISIALISASI & DATABASE
   // ==========================================
 
-  // Memuat Gambar Burung
-  useEffect(() => {
-    const img = new Image();
-    img.src = BIRD_IMAGE_URL;
-    img.onload = () => {
-      birdImageRef.current = img;
-      setForceRender(prev => !prev); // Picu re-render agar tampilan awal muncul
-    };
-  }, []);
+  // KITA HAPUS USEEFFECT UNTUK MEMUAT GAMBAR
 
   // Inisialisasi Farcaster
   useEffect(() => {
@@ -182,16 +169,14 @@ export default function FlappyBasedPage() {
 
      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT_INTERNAL - 20, GAME_WIDTH_INTERNAL, 20); // Tanah
 
-    // GAMBAR BURUNG (Pakai gambar yang sudah di-load)
-    if (birdImageRef.current) {
-      // Posisi X tetap di 50
-      ctx.drawImage(birdImageRef.current, 50, state.birdY, BIRD_SIZE, BIRD_SIZE);
-    } else {
-      // Fallback bola kuning
-      ctx.fillStyle = '#FCD34D'; ctx.beginPath();
-      ctx.arc(50 + BIRD_SIZE/2, state.birdY + BIRD_SIZE/2, BIRD_SIZE/2, 0, 2 * Math.PI);
-      ctx.fill();
-    }
+    // GAMBAR KARAKTER (BOLA KUNING)
+    // Kita kembali menggunakan fungsi menggambar lingkaran bawaan kanvas
+    ctx.fillStyle = '#FCD34D'; // Warna kuning
+    ctx.beginPath();
+    // Koordinat pusat lingkaran = posisi X/Y + setengah ukuran
+    ctx.arc(50 + BIRD_SIZE / 2, state.birdY + BIRD_SIZE / 2, BIRD_SIZE / 2, 0, 2 * Math.PI);
+    ctx.fill();
+
 
     if (!isGameOver) requestRef.current = requestAnimationFrame(gameLoop);
   };
@@ -226,21 +211,18 @@ export default function FlappyBasedPage() {
         {farcasterUser && <p className="text-sm mt-1 font-medium">Playing as: <span className="font-bold">@{farcasterUser.username}</span></p>}
       </div>
 
-      {/* Container Game (Lebar Responsif, Tinggi Tetap) */}
+      {/* Container Game (Lebar Responsif, Tinggi Tetap Proporsional) */}
       <div 
         className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF] w-full max-w-[360px]"
-        // Tinggi container diatur menggunakan CSS aspect-ratio agar responsif namun tetap proporsional
         style={{ aspectRatio: `${GAME_WIDTH_INTERNAL} / ${GAME_HEIGHT_INTERNAL}` }}
       >
         
-        {/* KANVAS GAME (LAYER PALING BAWAH) */}
+        {/* KANVAS GAME */}
         <canvas
             ref={canvasRef}
-            // Atribut width dan height ini adalah resolusi internal kanvas (360x640)
             width={GAME_WIDTH_INTERNAL}
             height={GAME_HEIGHT_INTERNAL}
             onClick={jump}
-            // Class CSS 'w-full h-full' akan membuat kanvas meregang memenuhi container
             className="cursor-pointer block absolute inset-0 w-full h-full"
             style={{ touchAction: 'none' }}
         />
@@ -248,17 +230,8 @@ export default function FlappyBasedPage() {
         {/* TAMPILAN AWAL (OVERLAY) */}
         {!gameStarted && !isGameOver && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
-            <p className="text-2xl font-bold mb-4">FLAPPY BASED</p>
-            {birdImageRef.current && (
-              // Gambar di layar awal juga dibuat responsif
-              // eslint-disable-next-line @next/next/no-img-element
-              <img 
-                src={BIRD_IMAGE_URL} 
-                alt="Bird" 
-                // Ukuran tampilan diatur dengan CSS, bukan atribut width/height
-                className="mb-8 animate-bounce w-[20%] h-auto" 
-              />
-            )}
+            <p className="text-2xl font-bold mb-8">FLAPPY BASED</p>
+            {/* KITA HAPUS TAG IMG DI SINI */}
             <p className="text-lg animate-pulse">Tap to Start</p>
           </div>
         )}

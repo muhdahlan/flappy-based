@@ -1,52 +1,88 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import farcaster from '@farcaster/miniapp-sdk';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import Image from 'next/image';
 
-// --- KONFIGURASI GAME ---
+// ==========================================
+// KONFIGURASI GAME
+// ==========================================
 const GAME_WIDTH = 360;
-const GAME_HEIGHT = 640;
-const GRAVITY = 3;
-const JUMP = -50;
-const PIPE_SPEED = 3;
-const PIPE_SPAWN_RATE = 2000;
-const BIRD_SIZE = 40;
-const GAP_SIZE = 150;
+const GAME_HEIGHT = 640; // Tinggi DIPELEBAR
+const GRAVITY = 0.25;
+const JUMP_STRENGTH = -4.5;
+const PIPE_SPEED = 2;
+const PIPE_SPAWN_RATE = 1500;
+const GAP_SIZE = 140;
+const BIRD_X_POS = 50;
+const BIRD_SIZE = 40; // Ukuran gambar burung
+const PIPE_WIDTH = 52;
 
 // URL Gambar Burung
 const BIRD_IMAGE_URL = 'https://imagedelivery.net/BXluQx4igeBGuW0Ia56BHw/f3975231-3886-426a-e152-67813b4a9200/rectcrop';
 
+// Tipe data pipa
+interface Pipe {
+  x: number;
+  topHeight: number;
+  passed: boolean;
+}
+
 export default function FlappyBasedPage() {
-  // --- STATE ---
+  // --- STATE & REFS (UI & LOGIKA) ---
+  const birdImageRef = useRef<HTMLImageElement | null>(null);
+  // State dummy untuk memicu re-render saat gambar siap
+  const [, setForceRender] = useState(false);
+  
+  const [isGameOver, setIsGameOver] = useState(false);
+  const [score, setScore] = useState(0);
+  const [gameStarted, setGameStarted] = useState(false);
   const [farcasterUser, setFarcasterUser] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [isGameOver, setIsGameOver] = useState(false);
-  const [score, setScore] = useState(0);
-  const [birdPosition, setBirdPosition] = useState(GAME_HEIGHT / 2);
-  const [pipes, setPipes] = useState<{ x: number; topHeight: number; passed: boolean }[]>([]);
 
-  // --- INISIALISASI ---
+  // --- REFS UNTUK GAME LOOP (CANVAS) ---
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // State game yang berubah cepat disimpan di ref untuk performa (ANTI-LAG)
+  const gameStateRef = useRef({
+    birdY: GAME_HEIGHT / 2,
+    birdVelocity: 0,
+    pipes: [] as Pipe[],
+    lastPipeSpawnTime: 0,
+    score: 0,
+  });
+  const requestRef = useRef<number>();
+
+  // ==========================================
+  // BAGIAN 1: INISIALISASI & DATABASE
+  // ==========================================
+
+  // Memuat Gambar Burung
+  useEffect(() => {
+    const img = new Image();
+    img.src = BIRD_IMAGE_URL;
+    img.onload = () => {
+      birdImageRef.current = img;
+      setForceRender(prev => !prev); // Picu re-render agar tampilan awal muncul
+    };
+  }, []);
+
+  // Inisialisasi Farcaster
   useEffect(() => {
     const init = async () => {
       try {
         await farcaster.actions.ready();
         const ctx = await farcaster.context;
         if (ctx?.user) setFarcasterUser(ctx.user);
-      } catch (e) {
-        console.error('Farcaster init error:', e);
-      }
+      } catch (e) console.error(e);
     };
     init();
   }, []);
 
-  // --- DATABASE ---
+  // Fungsi Kirim Skor
   const sendScoreToSupabase = useCallback(async (finalScore: number) => {
-    if (!farcasterUser || finalScore <= 0 || isSubmitting || isSubmitted) return;
+    if (!farcasterUser || finalScore === 0 || isSubmitting || isSubmitted) return;
     setIsSubmitting(true);
     const { error } = await supabase.from('scores').insert({
       username: farcasterUser.username,
@@ -57,145 +93,186 @@ export default function FlappyBasedPage() {
     if (!error) setIsSubmitted(true);
   }, [farcasterUser, isSubmitting, isSubmitted]);
 
+  // Kirim skor saat game over
   useEffect(() => {
     if (isGameOver && score > 0) sendScoreToSupabase(score);
   }, [isGameOver, score, sendScoreToSupabase]);
 
-  // --- GAME LOOP ---
-  useEffect(() => {
-    let gameLoop: NodeJS.Timeout;
-    let pipeGenerator: NodeJS.Timeout;
 
-    if (gameStarted && !isGameOver) {
-      gameLoop = setInterval(() => {
-        setBirdPosition((pos) => {
-          const newPos = pos + GRAVITY;
-          if (newPos > GAME_HEIGHT - BIRD_SIZE || newPos < 0) setIsGameOver(true);
-          return newPos;
-        });
+  // ==========================================
+  // BAGIAN 2: LOGIKA GAME LOOP (CANVAS)
+  // ==========================================
 
-        setPipes((currentPipes) => {
-          const newPipes = currentPipes
-            .map((pipe) => ({ ...pipe, x: pipe.x - PIPE_SPEED }))
-            .filter((pipe) => pipe.x > -60);
-
-          newPipes.forEach((pipe) => {
-            const birdLeft = 50;
-            const birdRight = 50 + BIRD_SIZE;
-            const birdTop = birdPosition;
-            const birdBottom = birdPosition + BIRD_SIZE;
-
-            if (birdRight > pipe.x && birdLeft < pipe.x + 52) {
-              if (birdTop < pipe.topHeight || birdBottom > pipe.topHeight + GAP_SIZE) {
-                setIsGameOver(true);
-              }
-            }
-            if (!pipe.passed && birdLeft > pipe.x + 52) {
-              setScore((s) => s + 1);
-              pipe.passed = true;
-            }
-          });
-          return newPipes;
-        });
-      }, 24);
-
-      pipeGenerator = setInterval(() => {
-        const minTop = 50;
-        const maxTop = GAME_HEIGHT - GAP_SIZE - 100;
-        const topHeight = Math.random() * (maxTop - minTop) + minTop;
-        setPipes((pipes) => [...pipes, { x: GAME_WIDTH, topHeight, passed: false }]);
-      }, PIPE_SPAWN_RATE);
-    }
-
-    return () => {
-      clearInterval(gameLoop);
-      clearInterval(pipeGenerator);
-    };
-  }, [gameStarted, isGameOver, birdPosition]);
-
-  // --- KONTROL ---
   const jump = () => {
+    if (isGameOver) return;
     if (!gameStarted) setGameStarted(true);
-    if (!isGameOver) setBirdPosition((pos) => Math.max(0, pos + JUMP));
+    gameStateRef.current.birdVelocity = JUMP_STRENGTH;
   };
 
+  const gameLoop = (time: number) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (isGameOver || !canvas || !ctx) return;
+
+    const state = gameStateRef.current;
+
+    // --- UPDATE FISIKA ---
+    if (gameStarted) {
+      state.birdVelocity += GRAVITY;
+      state.birdY += state.birdVelocity;
+
+      // Cek Tabrakan Tanah/Langit
+      if (state.birdY + BIRD_SIZE >= GAME_HEIGHT - 20 || state.birdY <= 0) {
+        setIsGameOver(true);
+        setScore(state.score); // Sinkronkan skor akhir
+      }
+
+      // Spawn Pipa
+      if (time - state.lastPipeSpawnTime > PIPE_SPAWN_RATE) {
+        const minTop = 50;
+        const maxTop = GAME_HEIGHT - GAP_SIZE - 150; 
+        const topHeight = Math.random() * (maxTop - minTop) + minTop;
+        state.pipes.push({ x: GAME_WIDTH, topHeight, passed: false });
+        state.lastPipeSpawnTime = time;
+      }
+
+      // Update Pipa & Cek Tabrakan
+      state.pipes.forEach((pipe, index) => {
+        pipe.x -= PIPE_SPEED;
+        
+        const birdHitbox = BIRD_SIZE * 0.8;
+        const birdX = BIRD_X_POS + (BIRD_SIZE - birdHitbox) / 2;
+        const birdY = state.birdY + (BIRD_SIZE - birdHitbox) / 2;
+        const pipeRight = pipe.x + PIPE_WIDTH;
+
+        // AABB Collision
+        if (birdX + birdHitbox > pipe.x && birdX < pipeRight) {
+            if (birdY < pipe.topHeight || birdY + birdHitbox > pipe.topHeight + GAP_SIZE) {
+                setIsGameOver(true);
+                setScore(state.score);
+            }
+        }
+
+        // Update Skor
+        if (!pipe.passed && birdX > pipeRight) {
+          state.score += 1;
+          pipe.passed = true;
+          setScore(state.score); // Sinkronkan state React untuk tampilan
+        }
+
+        // Hapus pipa lewat
+        if (pipe.x + PIPE_WIDTH < -50) state.pipes.splice(index, 1);
+      });
+    }
+
+    // --- RENDER CANVAS ---
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Langit
+    
+    // Pipa
+    ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
+    state.pipes.forEach((pipe) => {
+        ctx.fillRect(pipe.x, 0, PIPE_WIDTH, pipe.topHeight);
+        ctx.strokeRect(pipe.x, 0, PIPE_WIDTH, pipe.topHeight);
+        ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, PIPE_WIDTH, GAME_HEIGHT - (pipe.topHeight + GAP_SIZE));
+        ctx.strokeRect(pipe.x, pipe.topHeight + GAP_SIZE, PIPE_WIDTH, GAME_HEIGHT - (pipe.topHeight + GAP_SIZE));
+    });
+
+     ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20); // Tanah
+
+    // GAMBAR BURUNG (Pakai gambar yang sudah di-load)
+    if (birdImageRef.current) {
+      ctx.drawImage(birdImageRef.current, BIRD_X_POS, state.birdY, BIRD_SIZE, BIRD_SIZE);
+    } else {
+      // Fallback bola kuning (hanya jika gambar gagal load total)
+      ctx.fillStyle = '#FCD34D'; ctx.beginPath();
+      ctx.arc(BIRD_X_POS + BIRD_SIZE/2, state.birdY + BIRD_SIZE/2, BIRD_SIZE/2, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    if (!isGameOver) requestRef.current = requestAnimationFrame(gameLoop);
+  };
+
+  // Kontrol Loop Utama
+  useEffect(() => {
+    if (!isGameOver) requestRef.current = requestAnimationFrame(gameLoop);
+    return () => { if (requestRef.current) cancelAnimationFrame(requestRef.current); };
+  }, [isGameOver]);
+
+  // Reset Game State
   const resetGame = () => {
     setGameStarted(false);
     setIsGameOver(false);
     setScore(0);
-    setBirdPosition(GAME_HEIGHT / 2);
-    setPipes([]);
     setIsSubmitted(false);
+    // Reset ref
+    gameStateRef.current = {
+      birdY: GAME_HEIGHT / 2, birdVelocity: 0, pipes: [], lastPipeSpawnTime: 0, score: 0,
+    };
   };
 
-  // --- UI ---
+
+  // ==========================================
+  // BAGIAN 3: TAMPILAN UTAMA (JSX)
+  // ==========================================
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-[#0052FF] overflow-hidden">
-      <div className="z-10 mb-4 text-center text-white">
-        <h1 className="text-3xl font-extrabold drop-shadow-md">Flappy Based</h1>
-        {farcasterUser && <p className="font-medium">Playing as: <span className="font-bold">@{farcasterUser.username}</span></p>}
+    <main className="flex flex-col items-center justify-center min-h-screen bg-[#0052FF] text-white p-4 overflow-hidden">
+      {/* Header */}
+      <div className="w-full max-w-[360px] flex flex-col items-center mb-4 z-10 px-2">
+        <h1 className="text-3xl font-extrabold drop-shadow-md tracking-tight">Flappy Based</h1>
+        {farcasterUser && <p className="text-sm mt-1 font-medium">Playing as: <span className="font-bold">@{farcasterUser.username}</span></p>}
       </div>
 
-      <div
-        className="relative bg-[#4EC0CA] overflow-hidden shadow-2xl rounded-2xl cursor-pointer"
+      {/* Container Game */}
+      <div 
+        className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF]" 
         style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}
-        onClick={jump}
       >
+        
+        {/* KANVAS GAME (LAYER PALING BAWAH) */}
+        <canvas
+            ref={canvasRef}
+            width={GAME_WIDTH}
+            height={GAME_HEIGHT}
+            onClick={jump}
+            className="cursor-pointer block absolute inset-0"
+            style={{ touchAction: 'none' }}
+        />
+        
+        {/* TAMPILAN AWAL (OVERLAY) */}
         {!gameStarted && !isGameOver && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-white z-30">
-            <Image src={BIRD_IMAGE_URL} alt="Start Bird" width={60} height={60} className="mb-4 animate-bounce" />
-            <p className="text-2xl font-bold mb-2">FLAPPY BASED</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
+            <p className="text-2xl font-bold mb-4">FLAPPY BASED</p>
+            {birdImageRef.current && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={BIRD_IMAGE_URL} alt="Bird" width={BIRD_SIZE} height={BIRD_SIZE} className="mb-8 animate-bounce" />
+            )}
             <p className="text-lg animate-pulse">Tap to Start</p>
           </div>
         )}
 
+        {/* SKOR SAAT BERMAIN (OVERLAY) */}
         {gameStarted && !isGameOver && (
-          <p className="absolute top-10 left-0 right-0 text-center text-5xl font-bold text-white drop-shadow-md z-30">{score}</p>
+          <div className="absolute top-4 left-0 right-0 text-center z-20 pointer-events-none">
+             <p className="text-5xl font-bold drop-shadow-md">{score}</p>
+          </div>
         )}
 
-        {/* PIPA (RINTANGAN) */}
-        {pipes.map((pipe, i) => (
-          <div key={i} className="z-10">
-            <div className="absolute bg-green-500 border-2 border-green-700" style={{ left: pipe.x, top: 0, width: 52, height: pipe.topHeight }} />
-            <div className="absolute bg-green-500 border-2 border-green-700 bottom-0" style={{ left: pipe.x, width: 52, height: GAME_HEIGHT - pipe.topHeight - GAP_SIZE }} />
-          </div>
-        ))}
-
-        {/* KARAKTER BURUNG - PERBAIKAN DI SINI */}
-        <div
-          className="absolute z-20 transition-transform duration-75 ease-out"
-          style={{
-            left: 50,
-            top: birdPosition,
-            // Rotasi dinamis
-            transform: `rotate(${Math.min(Math.max((birdPosition - (GAME_HEIGHT/2)) / 10, -30), 90)}deg)`
-          }}
-        >
-           {/* Menggunakan width/height eksplisit, BUKAN fill */}
-           <Image 
-             src={BIRD_IMAGE_URL}
-             alt="Bird Character"
-             width={BIRD_SIZE}
-             height={BIRD_SIZE}
-             priority
-           />
-        </div>
-
-        {/* Tanah */}
-        <div className="absolute bottom-0 w-full h-4 bg-[#DEDEDE] border-t-4 border-[#553C2A] z-20"></div>
-
+        {/* OVERLAY GAME OVER */}
         {isGameOver && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-40 text-white">
-            <p className="text-4xl font-extrabold mb-4">Game Over!</p>
-            <div className="bg-white/10 p-4 rounded-xl mb-6 text-center">
-              <p className="text-sm uppercase font-bold text-blue-200">Score</p>
-              <p className="text-6xl font-black">{score}</p>
+          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-30 p-6 backdrop-blur-sm">
+            <p className="text-4xl text-white font-extrabold mb-2 drop-shadow-lg">Game Over!</p>
+            <div className="bg-white/10 p-4 rounded-xl mb-4 text-center shadow-lg border border-white/20 w-full max-w-[240px]">
+              <p className="text-sm uppercase font-bold text-blue-200">Your Score</p>
+              <p className="text-6xl font-black text-white mt-1">{score}</p>
             </div>
-            <button onClick={resetGame} className="bg-white text-[#0052FF] px-8 py-3 rounded-xl font-bold text-xl mb-4 hover:scale-105 transition">Try Again</button>
-            <Link href="/leaderboard" className="bg-[#0047CC] px-8 py-3 rounded-xl font-bold text-xl hover:scale-105 transition">🏆 Leaderboard</Link>
-            <div className="mt-4 h-6 text-sm font-medium">
-              {isSubmitting && <span className="text-blue-200 animate-pulse">⏳ Saving score...</span>}
-              {isSubmitted && <span className="text-green-400">✅ Score saved!</span>}
+            <button onClick={resetGame} className="w-full max-w-[240px] mb-3 px-6 py-3 bg-white text-[#0052FF] hover:bg-blue-50 rounded-xl font-bold text-lg transition-all active:scale-95 shadow-md">Try Again</button>
+            <Link href="/leaderboard" className="w-full max-w-[240px] px-6 py-3 bg-[#0047CC] hover:bg-[#003DB3] rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md border border-white/20">
+              <span>🏆</span> Leaderboard
+            </Link>
+            <div className="mt-3 h-6 flex items-center justify-center font-medium text-sm">
+              {isSubmitting && <p className="text-blue-200 flex items-center gap-2"><span className="animate-spin">⏳</span> Saving score...</p>}
+              {isSubmitted && <p className="text-green-400 flex items-center gap-2">✅ Score saved!</p>}
             </div>
           </div>
         )}

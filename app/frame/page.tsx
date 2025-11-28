@@ -2,23 +2,17 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
-// Base URL untuk aplikasi Anda - PASTIKAN INI URL DOMAIN VERSEL ANDA
 const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
 
-// Fungsi untuk menghasilkan metadata Frame
-// Menggunakan 'searchParams' yang disediakan oleh Next.js untuk Server Components
 export async function generateMetadata({ searchParams }: { 
   searchParams: { 
-    score?: string; // Menentukan bahwa 'score' adalah string opsional
+    score?: string; 
   } 
 }): Promise<Metadata> {
-  // Ambil query parameter 'score' dari objek searchParams
   const scoreParam = searchParams.score;
   const score = scoreParam ? parseInt(scoreParam, 10) : null;
 
-  // URL gambar yang akan ditampilkan di Frame
   const frameImage = `${APP_BASE_URL}/api/og?score=${score}`;
-  // URL untuk menangani interaksi tombol Frame (saat tombol diklik)
   const framePostUrl = `${APP_BASE_URL}/api/frame`;
 
   return {
@@ -30,27 +24,24 @@ export async function generateMetadata({ searchParams }: {
       images: [
         {
           url: frameImage,
-          width: 1200, // Ukuran standar untuk Open Graph / Frame image
+          width: 1200,
           height: 630,
           alt: `My score in Flappy Based is ${score !== null ? score : 'a new highscore'}`,
         },
       ],
     },
     other: {
-      // METADATA FARCASTER FRAME (fc:frame)
       'fc:frame': 'vNext',
       'fc:frame:image': frameImage,
       'fc:frame:post_url': framePostUrl,
       'fc:frame:button:1': 'Play Again',
-      'fc:frame:button:1:action': 'post_redirect', // Mengarahkan ke game utama
+      'fc:frame:button:1:action': 'post_redirect',
       'fc:frame:button:2': 'Leaderboard',
-      'fc:frame:button:2:action': 'post_redirect', // Mengarahkan ke leaderboard
+      'fc:frame:button:2:action': 'post_redirect',
     },
   };
 }
 
-// Komponen halaman Frame
-// Ini adalah halaman kosong yang hanya berguna untuk metadata
 export default function FramePage() {
   return (
     <div style={{ 

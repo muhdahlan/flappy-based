@@ -4,9 +4,7 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
-    // Hapus 'unoptimized: true'
-    // Tambahkan konfigurasi 'domains'
-    remotePatterns: [ // Menggunakan remotePatterns lebih modern daripada 'domains'
+    remotePatterns: [
       {
         protocol: 'https',
         hostname: 'imagedelivery.net',

@@ -1,27 +1,18 @@
 // app/api/frame/route.tsx
 import { NextRequest, NextResponse } from 'next/server';
 
-// Base URL aplikasi Anda
-const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
+const APP_URL = 'https://flappy-based.vercel.app'; 
 
 export async function POST(req: NextRequest): Promise<Response> {
-  const url = new URL(req.url); // Mengambil URL dari request
-  const buttonIndex = url.searchParams.get('buttonIndex'); // Ini dari fc:frame:post_url?buttonIndex=X
+  const body = await req.json();
+  const { untrustedData } = body;
+  const { buttonIndex } = untrustedData;
 
-  let redirectUrl = APP_BASE_URL; // Default redirect ke halaman utama
-
-  // Logika redirect berdasarkan tombol yang ditekan
-  if (buttonIndex === '1') { // Tombol "Play Again"
-    redirectUrl = APP_BASE_URL;
-  } else if (buttonIndex === '2') { // Tombol "Leaderboard"
-    redirectUrl = `${APP_BASE_URL}/leaderboard`;
+  if (buttonIndex === 1) {
+    return NextResponse.redirect(`${APP_URL}`, { status: 302 });
+  } else if (buttonIndex === 2) {
+    return NextResponse.redirect(`${APP_URL}/leaderboard`, { status: 302 });
+  } else {
+    return NextResponse.redirect(`${APP_URL}`, { status: 302 });
   }
-
-  // Merespons dengan pengalihan
-  return NextResponse.redirect(redirectUrl, { status: 302 });
-}
-
-// Untuk GET request ke /api/frame, kita juga redirect ke halaman utama
-export async function GET(req: NextRequest): Promise<Response> {
-  return NextResponse.redirect(APP_BASE_URL, { status: 302 });
 }

@@ -1,6 +1,4 @@
-// app/frame/page.tsx
 import { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 
 const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
 

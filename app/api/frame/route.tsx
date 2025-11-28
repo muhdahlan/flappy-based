@@ -1,4 +1,3 @@
-// app/api/frame/route.tsx
 import { NextRequest, NextResponse } from 'next/server';
 
 const APP_URL = 'https://flappy-based.vercel.app'; 

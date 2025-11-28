@@ -1,22 +1,24 @@
 // app/frame/page.tsx
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { Request } from 'next/dist/compiled/@vercel/og/lib/types'; // Import Request dari next
 
-// Base URL untuk aplikasi Anda (PASTIKAN INI URL DEPLOYMENT VERSEL ANDA)
+// Base URL untuk aplikasi Anda - PASTIKAN INI URL DOMAIN VERSEL ANDA
 const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
 
 // Fungsi untuk menghasilkan metadata Frame
-export async function generateMetadata(): Promise<Metadata> {
-  // Ambil query parameter 'score' dari URL
-  // Contoh URL: https://flappy-based.vercel.app/frame?score=123
-  const scoreParam = new URLSearchParams().get('score');
-  const score = scoreParam ? parseInt(scoreParam) : null;
+// PERHATIKAN: Menambahkan parameter 'req' untuk mendapatkan URL request yang sebenarnya
+export async function generateMetadata({ searchParams }: { searchParams: { [key: string]: string | string[] | undefined } }): Promise<Metadata> {
+  // Ambil query parameter 'score' dari URL request saat ini
+  // Next.js secara otomatis menyediakan searchParams di generateMetadata
+  const scoreParam = searchParams.score;
+  const score = typeof scoreParam === 'string' ? parseInt(scoreParam, 10) : null;
 
   // URL gambar yang akan ditampilkan di Frame
-  // Untuk sementara kita pakai gambar placeholder
-  // Nanti bisa dibuat dinamis sesuai skor
-  const frameImage = `${APP_BASE_URL}/api/og?score=${score}`; // Kita akan buat API ini nanti
-  const framePostUrl = `${APP_BASE_URL}/api/frame`; // URL untuk handle interaksi tombol Frame (akan dibuat nanti)
+  // Ini akan memanggil API Route kita untuk membuat gambar dinamis
+  const frameImage = `${APP_BASE_URL}/api/og?score=${score}`;
+  // URL untuk menangani interaksi tombol Frame (saat tombol diklik)
+  const framePostUrl = `${APP_BASE_URL}/api/frame`;
 
   return {
     title: 'Flappy Based - Score Share',
@@ -27,27 +29,27 @@ export async function generateMetadata(): Promise<Metadata> {
       images: [
         {
           url: frameImage,
-          width: 1200,
+          width: 1200, // Ukuran standar untuk Open Graph / Frame image
           height: 630,
           alt: `My score in Flappy Based is ${score !== null ? score : 'a new highscore'}`,
         },
       ],
     },
     other: {
-      // METADATA FARCASTER FRAME
+      // METADATA FARCASTER FRAME (fc:frame)
       'fc:frame': 'vNext',
       'fc:frame:image': frameImage,
       'fc:frame:post_url': framePostUrl,
       'fc:frame:button:1': 'Play Again',
-      'fc:frame:button:1:action': 'post_redirect', // Redirect ke game utama
+      'fc:frame:button:1:action': 'post_redirect', // Mengarahkan ke game utama
       'fc:frame:button:2': 'Leaderboard',
-      'fc:frame:button:2:action': 'post_redirect', // Redirect ke leaderboard
+      'fc:frame:button:2:action': 'post_redirect', // Mengarahkan ke leaderboard
     },
   };
 }
 
 // Komponen halaman Frame
-// Ini sebenarnya tidak akan terlihat di browser, hanya metadata yang penting
+// Ini adalah halaman kosong yang hanya berguna untuk metadata
 export default function FramePage() {
   return (
     <div style={{ 

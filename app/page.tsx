@@ -5,11 +5,14 @@ import farcaster from '@farcaster/miniapp-sdk';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
+// BASE URL APLIKASI ANDA (PENTING UNTUK FARCASTER FRAME)
+const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
+
 // ==========================================
 // KONFIGURASI GAME
 // ==========================================
 const GAME_WIDTH = 360; // Lebar standar
-const GAME_HEIGHT = 500; // TINGGI DIUBAH: Dikurangi agar tidak terlalu ke bawah
+const GAME_HEIGHT = 500; // Tinggi game yang disesuaikan
 const GRAVITY = 0.25;
 const JUMP = -4.5;
 const PIPE_SPEED = 2;
@@ -18,7 +21,6 @@ const GAP_SIZE = 140; // Celah antar pipa
 const BIRD_SIZE = 40; // Ukuran bola/burung
 
 // URL gambar burung (opsional, jika gagal akan pakai bola kuning)
-// Jika Anda ingin kembali ke bola kuning sebagai karakter utama, biarkan saja
 const BIRD_IMAGE_URL = 'https://imagedelivery.net/BXluQx4igeBGuW0Ia56BHw/f3975231-3886-426a-e152-67813b4a9200/rectcrop';
 
 export default function FlappyBasedFinalUI() {
@@ -68,10 +70,11 @@ export default function FlappyBasedFinalUI() {
     if (!error) setIsSubmitted(true);
   }, [farcasterUser, isSubmitting, isSubmitted]);
 
+  // FUNGSI SHARE SCORE SUDAH DIUBAH UNTUK MENGARAHKAN KE FRAME
   const shareScore = useCallback(() => {
     if (!farcasterUser) return;
     const text = `I just scored ${score} in Flappy Based! Can you beat my score? @${farcasterUser.username} #FlappyBased #Farcaster`;
-    const embedUrl = 'https://flappy-based.vercel.app';
+    const embedUrl = `${APP_BASE_URL}/frame?score=${score}`; // Mengarahkan ke Frame dengan skor
     const shareUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(embedUrl)}`;
     farcaster.actions.openUrl(shareUrl);
   }, [score, farcasterUser]);

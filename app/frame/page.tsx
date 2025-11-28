@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 
 const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
+const MINI_APP_URL = 'https://farcaster.xyz/miniapps/gHz9rkxcK_mF/flappy-based'; 
 
 export async function generateMetadata({ searchParams }: { 
   searchParams: { 
@@ -11,7 +12,7 @@ export async function generateMetadata({ searchParams }: {
   const score = scoreParam ? parseInt(scoreParam, 10) : null;
 
   const frameImage = `${APP_BASE_URL}/api/og?score=${score}`;
-  const framePostUrl = `${APP_BASE_URL}/api/frame`;
+  const framePostUrl = `${APP_BASE_URL}/api/frame`; 
 
   return {
     title: 'Flappy Based - Score Share',
@@ -33,7 +34,8 @@ export async function generateMetadata({ searchParams }: {
       'fc:frame:image': frameImage,
       'fc:frame:post_url': framePostUrl,
       'fc:frame:button:1': 'Play Again',
-      'fc:frame:button:1:action': 'post_redirect',
+      'fc:frame:button:1:action': 'link', 
+      'fc:frame:button:1:target': MINI_APP_URL, 
       'fc:frame:button:2': 'Leaderboard',
       'fc:frame:button:2:action': 'post_redirect',
     },

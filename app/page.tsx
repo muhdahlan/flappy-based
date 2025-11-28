@@ -18,6 +18,7 @@ const GAP_SIZE = 140; // Celah antar pipa
 const BIRD_SIZE = 40; // Ukuran bola/burung
 
 // URL gambar burung (opsional, jika gagal akan pakai bola kuning)
+// Jika Anda ingin kembali ke bola kuning sebagai karakter utama, biarkan saja
 const BIRD_IMAGE_URL = 'https://imagedelivery.net/BXluQx4igeBGuW0Ia56BHw/f3975231-3886-426a-e152-67813b4a9200/rectcrop';
 
 export default function FlappyBasedFinalUI() {
@@ -42,7 +43,7 @@ export default function FlappyBasedFinalUI() {
   });
 
   // ==========================================
-  // PRELOAD GAMBAR
+  // PRELOAD GAMBAR (Opsional: Jika ingin pakai gambar)
   // ==========================================
   useEffect(() => {
     const img = new Image();
@@ -124,10 +125,10 @@ export default function FlappyBasedFinalUI() {
     const gameLoop = (timestamp: number) => {
       if (isGameOver) return;
 
-      // --- TAMPILAN AWAL ---
+      // --- TAMPILAN AWAL (START SCREEN) ---
       if (!gameStarted) {
         ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Background
         ctx.fillStyle = 'white';
         ctx.font = 'bold 28px sans-serif';
         ctx.textAlign = 'center';
@@ -135,21 +136,13 @@ export default function FlappyBasedFinalUI() {
         ctx.font = '18px sans-serif';
         ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
         
-        if (birdImageRef.current) {
-          const birdX = GAME_WIDTH / 2 - BIRD_SIZE / 2;
-          const birdY = GAME_HEIGHT / 2 - 100;
-          ctx.drawImage(birdImageRef.current, birdX, birdY, BIRD_SIZE, BIRD_SIZE);
-        } else {
-          ctx.fillStyle = '#FCD34D'; ctx.beginPath();
-          ctx.arc(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 80, BIRD_SIZE / 2, 0, 2 * Math.PI);
-          ctx.fill();
-        }
+        // HANYA TEKS, TIDAK ADA BOLA/BURUNG DI TAMPILAN AWAL INI
 
         animationFrameId = requestAnimationFrame(gameLoop);
         return;
       }
 
-      // --- LOGIKA UPDATE ---
+      // --- LOGIKA UPDATE (saat game berjalan) ---
       const state = gameState.current;
       state.birdVelocity += GRAVITY;
       state.birdY += state.birdVelocity;
@@ -157,7 +150,6 @@ export default function FlappyBasedFinalUI() {
       // LOGIKA PIPA BARU: Memastikan pipa selalu bisa dilewati
       if (timestamp - state.lastPipeSpawn > PIPE_SPAWN_RATE) {
         const minTop = 50;
-        // maxTop dihitung agar selalu ada ruang minimal 60px di bawah pipa bawah
         const maxTop = GAME_HEIGHT - GAP_SIZE - 60; 
         const topHeight = Math.random() * (maxTop - minTop) + minTop;
         state.pipes.push({ x: GAME_WIDTH, topHeight, passed: false });
@@ -181,17 +173,19 @@ export default function FlappyBasedFinalUI() {
 
       if (state.birdY > GAME_HEIGHT - BIRD_SIZE || state.birdY < 0) setIsGameOver(true);
 
-      // --- RENDERING ---
+      // --- RENDERING (saat game berjalan) ---
       ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20);
+      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Langit
+      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20); // Tanah
 
+      // Pipa
       ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
       state.pipes.forEach(pipe => {
         ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
         ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
       });
 
+      // KARAKTER BURUNG (Hanya muncul saat game berjalan)
       if (birdImageRef.current) {
         ctx.drawImage(birdImageRef.current, 50, state.birdY, BIRD_SIZE, BIRD_SIZE);
       } else {
@@ -200,6 +194,7 @@ export default function FlappyBasedFinalUI() {
         ctx.fill();
       }
 
+      // Skor
       if (gameStarted && !isGameOver) {
         ctx.fillStyle = 'white'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(score.toString(), GAME_WIDTH / 2, 80);

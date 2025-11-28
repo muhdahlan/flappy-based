@@ -2,12 +2,12 @@
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
 
-export const runtime = 'edge'; 
+// export const runtime = 'edge'; // <--- UBAH MENJADI SEPERTI INI
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url); // Mengambil query params dari request URL
-    const score = searchParams.get('score') || '0'; // Default ke '0' jika tidak ada skor
+    const { searchParams } = new URL(req.url);
+    const score = searchParams.get('score') || '0';
 
     return new ImageResponse(
       (
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
             justifyContent: 'center',
             width: '100%',
             height: '100%',
-            backgroundColor: '#0052FF', 
+            backgroundColor: '#0052FF',
             color: 'white',
             fontFamily: 'sans-serif',
             fontSize: 60,
@@ -37,8 +37,6 @@ export async function GET(req: NextRequest) {
     );
   } catch (e: any) {
     console.log(`Error generating OG image: ${e.message}`);
-    // Jika ada error, ini akan mengembalikan respons 500
-    // tapi Next.js kadang merespons 404 jika ada crash di awal
     return new Response(`Failed to generate the image: ${e.message}`, {
       status: 500,
     });

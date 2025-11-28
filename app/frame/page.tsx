@@ -1,21 +1,22 @@
 // app/frame/page.tsx
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Request } from 'next/dist/compiled/@vercel/og/lib/types'; // Import Request dari next
 
 // Base URL untuk aplikasi Anda - PASTIKAN INI URL DOMAIN VERSEL ANDA
 const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
 
 // Fungsi untuk menghasilkan metadata Frame
-// PERHATIKAN: Menambahkan parameter 'req' untuk mendapatkan URL request yang sebenarnya
-export async function generateMetadata({ searchParams }: { searchParams: { [key: string]: string | string[] | undefined } }): Promise<Metadata> {
-  // Ambil query parameter 'score' dari URL request saat ini
-  // Next.js secara otomatis menyediakan searchParams di generateMetadata
+// Menggunakan 'searchParams' yang disediakan oleh Next.js untuk Server Components
+export async function generateMetadata({ searchParams }: { 
+  searchParams: { 
+    score?: string; // Menentukan bahwa 'score' adalah string opsional
+  } 
+}): Promise<Metadata> {
+  // Ambil query parameter 'score' dari objek searchParams
   const scoreParam = searchParams.score;
-  const score = typeof scoreParam === 'string' ? parseInt(scoreParam, 10) : null;
+  const score = scoreParam ? parseInt(scoreParam, 10) : null;
 
   // URL gambar yang akan ditampilkan di Frame
-  // Ini akan memanggil API Route kita untuk membuat gambar dinamis
   const frameImage = `${APP_BASE_URL}/api/og?score=${score}`;
   // URL untuk menangani interaksi tombol Frame (saat tombol diklik)
   const framePostUrl = `${APP_BASE_URL}/api/frame`;

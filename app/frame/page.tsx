@@ -29,6 +29,7 @@ export async function generateMetadata({ searchParams }: {
         },
       ],
     },
+    metadataBase: new URL(APP_BASE_URL),
     other: {
       'fc:frame': 'vNext',
       'fc:frame:image': frameImage,

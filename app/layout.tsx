@@ -7,6 +7,9 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Flappy Based',
   description: 'A Farcaster Mini App Game',
+  other: {
+    "base:app_id": "69392382e6be54f5ed71d4ee",
+  },
 };
 
 export default function RootLayout({

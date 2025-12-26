@@ -9,7 +9,7 @@
     "splashImageUrl": "https://flappy-based.vercel.app/splash.png",
     "splashBackgroundColor": "#0052FF",
     "webhookUrl": "https://flappy-based.vercel.app/api/webhook",
-    "subtitle": "Fly high and dominate the real-time leaderboard!",
+    "subtitle": "real-time leaderboard",
     "description": "Classic Flappy game built for Farcaster with live rankings on Base",
     "primaryCategory": "games",
     "tags": [

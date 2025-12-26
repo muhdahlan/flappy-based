@@ -4,10 +4,11 @@
     "version": "1",
     "iconUrl": "https://flappy-based.vercel.app/icon.png",
     "homeUrl": "https://flappy-based.vercel.app",
-    "imageUrl": "https://flappy-based.vercel.app/opengraph-image.png",
+    "imageUrl": "https://flappy-based.vercel.app/image.png",
     "buttonTitle": "Play Flappy Based 🐦",
     "splashImageUrl": "https://flappy-based.vercel.app/splash.png",
     "splashBackgroundColor": "#0052FF",
+    "webhookUrl": "https://flappy-based.vercel.app/api/webhook",
     "subtitle": "Fly high and dominate the real-time leaderboard!",
     "description": "Classic Flappy game built for Farcaster with live rankings on Base",
     "primaryCategory": "games",
@@ -16,9 +17,7 @@
       "game",
       "arcade",
       "bird"
-    ],
-    "ogTitle": "Farcaster Mini App Game",
-    "ogDescription": "Play the classic Flappy Bird game and compete for the high score!"
+    ]
   },
   "accountAssociation": {
     "header": "eyJmaWQiOjI0Mjg0NywidHlwZSI6ImF1dGgiLCJrZXkiOiIweGJiMjVjQzVkNWJjNjE4MzA5NGQ2OTM4ZUZiMEZlYmQyMEQ3NGRCYUEifQ",

@@ -7,9 +7,7 @@ type Props = {
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const score = typeof searchParams.score === 'string' ? searchParams.score : '0';
 
-  const host = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000';
+  const host = 'https://flappy-based.vercel.app';
 
   const ogImageUrl = `${host}/api/og?score=${score}`;
   const appUrl = `${host}/`;

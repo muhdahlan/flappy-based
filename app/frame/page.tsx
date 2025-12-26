@@ -1,64 +1,52 @@
 import { Metadata } from 'next';
 
-const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
-const MINI_APP_URL = 'https://farcaster.xyz/miniapps/gHz9rkxcK_mF/flappy-based'; 
+type Props = {
+  searchParams: { [key: string]: string | string[] | undefined };
+};
 
-export async function generateMetadata({ searchParams }: { 
-  searchParams: { 
-    score?: string; 
-  } 
-}): Promise<Metadata> {
-  const scoreParam = searchParams.score;
-  const score = scoreParam ? parseInt(scoreParam, 10) : null;
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const score = typeof searchParams.score === 'string' ? searchParams.score : '0';
 
-  const frameImage = `${APP_BASE_URL}/api/og?score=${score}`;
-  const framePostUrl = `${APP_BASE_URL}/api/frame`; 
+  const host = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'http://localhost:3000';
+
+  const ogImageUrl = `${host}/api/og?score=${score}`;
+  const appUrl = `${host}/`;
 
   return {
-    title: 'Flappy Based - Score Share',
-    description: `I just scored ${score !== null ? score : 'a new highscore'} in Flappy Based!`,
+    title: `Flappy Based Score: ${score}`,
+    description: 'Can you beat my score on Flappy Based?',
     openGraph: {
-      title: 'Flappy Based',
-      description: `I just scored ${score !== null ? score : 'a new highscore'} in Flappy Based!`,
-      images: [
-        {
-          url: frameImage,
-          width: 1200,
-          height: 630,
-          alt: `My score in Flappy Based is ${score !== null ? score : 'a new highscore'}`,
-        },
-      ],
+      title: `Flappy Based Score: ${score}`,
+      description: 'Can you beat my score on Flappy Based?',
+      images: [{ url: ogImageUrl, width: 1200, height: 630 }],
     },
-    metadataBase: new URL(APP_BASE_URL),
     other: {
-      'fc:frame': 'vNext',
-      'fc:frame:image': frameImage,
-      'fc:frame:post_url': framePostUrl,
-      'fc:frame:button:1': 'Play Again',
-      'fc:frame:button:1:action': 'link', 
-      'fc:frame:button:1:target': MINI_APP_URL, 
-      'fc:frame:button:2': 'Leaderboard',
-      'fc:frame:button:2:action': 'post_redirect',
+      'fc:frame': JSON.stringify({
+        version: "next",
+        imageUrl: ogImageUrl,
+        button: {
+          title: "Play Now & Beat Score! 🐦",
+          action: {
+            type: "launch_frame",
+            name: "Flappy Based",
+            url: appUrl,
+            splashImageUrl: `${host}/opengraph-image.png`,
+            splashBackgroundColor: "#4EC0CA"
+          }
+        }
+      })
     },
   };
 }
 
-export default function FramePage() {
+export default function FramePage({ searchParams }: Props) {
+  const score = typeof searchParams.score === 'string' ? searchParams.score : '0';
   return (
-    <div style={{ 
-        display: 'flex', 
-        flexDirection: 'column', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh', 
-        backgroundColor: '#0052FF', 
-        color: 'white', 
-        fontSize: '24px',
-        textAlign: 'center'
-    }}>
-      <h1>Flappy Based Score Share</h1>
-      <p>This page is for Farcaster Frame embeds only.</p>
-      <p>Go to the <a href={APP_BASE_URL} style={{ color: 'yellow' }}>main app</a> to play!</p>
+    <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'sans-serif', color: '#333' }}>
+      <h1>Flappy Based Score: {score}</h1>
+      <p>Open this link in a Farcaster client (like Warpcast) to play!</p>
     </div>
   );
 }

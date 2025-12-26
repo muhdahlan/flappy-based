@@ -4,11 +4,44 @@ import { Inter } from 'next/font/google';
 
 const inter = Inter({ subsets: ['latin'] });
 
+const host = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : 'http://localhost:3000';
+
 export const metadata: Metadata = {
   title: 'Flappy Based',
-  description: 'A Farcaster Mini App Game',
+  description: 'Play Flappy Bird on Farcaster!',
+  openGraph: {
+    title: 'Flappy Based',
+    description: 'Play Flappy Bird on Farcaster!',
+    url: host,
+    siteName: 'Flappy Based',
+    images: [
+      {
+        url: `${host}/opengraph-image.png`,
+        width: 1200,
+        height: 630,
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
   other: {
     "base:app_id": "69392382e6be54f5ed71d4ee",
+    "fc:frame": JSON.stringify({
+      version: "next",
+      imageUrl: `${host}/opengraph-image.png`,
+      button: {
+        title: "Play Flappy Based 🐦",
+        action: {
+          type: "launch_frame",
+          name: "Flappy Based",
+          url: host,
+          splashImageUrl: `${host}/opengraph-image.png`,
+          splashBackgroundColor: "#4EC0CA"
+        }
+      }
+    })
   },
 };
 

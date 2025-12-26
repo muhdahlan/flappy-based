@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@farcaster/frame-sdk": "^0.1.12",
     "@farcaster/miniapp-sdk": "^0.1.0",
     "@supabase/supabase-js": "^2.43.4",
     "@vercel/og": "^0.6.2",

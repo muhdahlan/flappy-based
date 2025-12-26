@@ -1,12 +1,10 @@
-'use client'; // PENTING: Halaman ini dijalankan di Browser (Client)
+'use client';
 
 import { useEffect, useState } from 'react';
-// Import Jembatan Supabase
 import { supabase } from '@/lib/supabase';
-// Import Link untuk navigasi
 import Link from 'next/link';
+import sdk from '@farcaster/frame-sdk';
 
-// Definisikan bentuk data skor agar TypeScript senang
 type ScoreEntry = {
   username: string;
   score: number;
@@ -14,47 +12,49 @@ type ScoreEntry = {
 };
 
 export default function LiveLeaderboardPage() {
-  // --- BAGIAN 1: STATE (PENYIMPANAN DATA SEMENTARA) ---
   const [scores, setScores] = useState<ScoreEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // --- BAGIAN 2: EFEK REAL-TIME (JANTUNGNYA LIVE) ---
   useEffect(() => {
-    // FUNGSI A: Mengambil data awal (Initial Fetch)
+    const initFarcasterSDK = async () => {
+      try {
+        await sdk.actions.ready();
+      } catch (error) {
+        console.error("Farcaster SDK initialization failed:", error);
+      }
+    };
+    initFarcasterSDK();
+  }, []);
+
+  useEffect(() => {
     const fetchInitialScores = async () => {
       const { data, error } = await supabase
         .from('scores')
         .select('username, score, created_at')
-        .order('score', { ascending: false }) // Urutkan dari tertinggi
-        .limit(20); // Ambil 20 besar saja
+        .order('score', { ascending: false })
+        .limit(20);
 
       if (error) {
-        console.error("Gagal mengambil leaderboard:", error);
+        console.error("Failed to fetch leaderboard:", error);
       } else {
-        setScores(data as ScoreEntry[]); // Simpan data ke state
+        setScores(data as ScoreEntry[]);
       }
-      setIsLoading(false); // Selesai loading
+      setIsLoading(false);
     };
 
     fetchInitialScores();
 
-    // FUNGSI B: Menyiapkan "Saluran Telepon" Real-Time (Subscription)
-    console.log("Menghubungkan ke saluran real-time...");
-    
     const channel = supabase
       .channel('live-leaderboard')
       .on(
         'postgres_changes',
         {
-          event: 'INSERT', // Dengarkan data BARU masuk
+          event: 'INSERT',
           schema: 'public',
           table: 'scores',
         },
         (payload) => {
-          console.log('Skor baru terdeteksi!', payload.new);
           const newScore = payload.new as ScoreEntry;
-
-          // Perbarui daftar skor di layar secara otomatis
           setScores((currentScores) => {
             const updatedList = [...currentScores, newScore];
             updatedList.sort((a, b) => b.score - a.score);
@@ -64,14 +64,11 @@ export default function LiveLeaderboardPage() {
       )
       .subscribe();
 
-    // FUNGSI C: Bersih-bersih saat keluar halaman
     return () => {
       supabase.removeChannel(channel);
     };
   }, []);
 
-
-  // --- BAGIAN 3: TAMPILAN HTML (UI) ---
   return (
     <main className="flex flex-col items-center min-h-screen bg-slate-900 text-white p-4">
       <h1 className="text-3xl font-bold mb-6 text-blue-400 mt-8">🏆 Live Leaderboard</h1>
@@ -82,21 +79,18 @@ export default function LiveLeaderboardPage() {
 
       <div className="w-full max-w-md bg-slate-800 rounded-xl shadow-2xl overflow-hidden border border-slate-700 min-h-[300px] relative">
         
-        {/* Overlay Loading */}
         {isLoading && (
           <div className="absolute inset-0 bg-slate-800/80 flex items-center justify-center z-10">
             <p className="text-blue-400 animate-pulse">Loading scores...</p>
           </div>
         )}
 
-        {/* Header Tabel */}
         <div className="grid grid-cols-3 bg-blue-900/50 p-3 text-sm font-bold text-blue-200">
           <div>Rank</div>
           <div>Player</div>
           <div className="text-right">Score</div>
         </div>
 
-        {/* Isi Tabel */}
         <div className="divide-y divide-slate-700">
           {!isLoading && scores.length === 0 && (
               <div className="p-4 text-center text-slate-400">
@@ -119,7 +113,6 @@ export default function LiveLeaderboardPage() {
           ))}
         </div>
       </div>
-      {/* Indikator Live */}
       <p className="text-xs text-slate-500 mt-4 flex items-center gap-2">
         <span className="relative flex h-3 w-3">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>

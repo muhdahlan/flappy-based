@@ -2,22 +2,22 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { startOfDay } from 'date-fns';
 
-// --- KONFIGURASI ---
-// GANTI DENGAN API KEY NEYNAR ANDA YANG SEBENARNYA
+// --- CONFIGURATION ---
+// REPLACE WITH YOUR ACTUAL NEYNAR API KEY
 const FARCASTER_HUB_API_KEY = '8076C074-CE48-4866-8389-43177E043B11'; 
-const BATCH_SIZE = 20; // Jumlah user per batch
+const BATCH_SIZE = 20; // Number of users to process per batch
 
-// Inisialisasi Supabase Admin Client (Butuh SUPABASE_SERVICE_ROLE_KEY di Vercel Env Vars)
+// Initialize Supabase Admin Client (Requires SUPABASE_SERVICE_ROLE_KEY in Vercel Env Vars)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY! 
 );
 
 export async function GET(request: Request) {
-  // Verifikasi Cron Secret dari Vercel
+  // Verify Cron Secret from Vercel
   const authHeader = request.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    // Uncomment baris ini untuk produksi agar aman
+    // Uncomment the following line in production for security
     // return new NextResponse('Unauthorized', { status: 401 });
     console.warn('Warning: Unauthorized access attempt or manual trigger without secret.');
   }
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     console.log('Starting hourly notification batch job...');
     const todayStart = startOfDay(new Date()).toISOString();
 
-    // 1. Dapatkan kandidat dari database (RPC)
+    // 1. Get candidates from the database (via RPC function)
     const { data: candidates, error: candidateError } = await supabaseAdmin.rpc('get_notification_candidates', {
       check_date: todayStart,
       batch_limit: BATCH_SIZE
@@ -41,17 +41,18 @@ export async function GET(request: Request) {
 
     console.log(`Found ${candidates.length} candidates for this batch. Sending notifications...`);
 
-    // 2. Pesan notifikasi
+    // 2. Define notification message content
     const title = "Daily Flappy Reminder 🐦";
     const body = "Haven't played Flappy Based today? Tap to set a new high score!";
     const url = 'https://flappy-based.vercel.app';
 
-    // 3. Kirim & catat log
+    // 3. Send notifications and log results
     const results = await Promise.all(candidates.map(async (user: any) => {
       const fid = user.fid;
       let status = 'failed';
 
       try {
+        // Send notification via Neynar API
         const response = await fetch('https://api.neynar.com/v2/farcaster/notifications', {
           method: 'POST',
           headers: {
@@ -62,19 +63,31 @@ export async function GET(request: Request) {
           body: JSON.stringify({ recipient_fid: fid, title, body, url }),
         });
 
-        if (response.ok) status = 'sent';
-        else if (response.status === 400 || response.status === 403) status = 'opted_out';
-        else console.error(`Neynar error for FID ${fid}:`, await response.json());
+        if (response.ok) {
+          status = 'sent';
+        } else if (response.status === 400 || response.status === 403) {
+          // Handle cases where the user cannot receive notifications
+          status = 'opted_out';
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.error(`Neynar error for FID ${fid}:`, response.status, errorData);
+        }
 
       } catch (err) {
         console.error(`Error sending to FID ${fid}:`, err);
         status = 'error';
       }
 
-      // Catat ke database
-      await supabaseAdmin
+      // Log the result to the database to prevent re-sending today
+      const { error: logError } = await supabaseAdmin
         .from('daily_notification_log')
-        .upsert({ fid, last_sent_at: new Date().toISOString(), status }, { onConflict: 'fid' });
+        .upsert({ 
+          fid, 
+          last_sent_at: new Date().toISOString(), 
+          status 
+        }, { onConflict: 'fid' });
+      
+      if (logError) console.error(`Failed to log notification for FID ${fid}:`, logError);
 
       return { fid, status };
     }));

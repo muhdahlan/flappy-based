@@ -1,32 +1,24 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import farcaster from '@farcaster/miniapp-sdk';
+import sdk from '@farcaster/frame-sdk';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 
-// BASE URL APLIKASI ANDA (PENTING UNTUK FARCASTER FRAME)
 const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
 
-// ==========================================
-// KONFIGURASI GAME
-// ==========================================
-const GAME_WIDTH = 360; // Lebar standar
-const GAME_HEIGHT = 500; // Tinggi game yang disesuaikan
+const GAME_WIDTH = 360;
+const GAME_HEIGHT = 500;
 const GRAVITY = 0.25;
 const JUMP = -4.5;
 const PIPE_SPEED = 2;
 const PIPE_SPAWN_RATE = 1500;
-const GAP_SIZE = 140; // Celah antar pipa
-const BIRD_SIZE = 40; // Ukuran bola/burung
+const GAP_SIZE = 140;
+const BIRD_SIZE = 40;
 
-// URL gambar burung (opsional, jika gagal akan pakai bola kuning)
 const BIRD_IMAGE_URL = 'https://imagedelivery.net/BXluQx4igeBGuW0Ia56BHw/f3975231-3886-426a-e152-67813b4a9200/rectcrop';
 
 export default function FlappyBasedFinalUI() {
-  // ==========================================
-  // STATE & REFS
-  // ==========================================
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const birdImageRef = useRef<HTMLImageElement | null>(null);
   const [isGameOver, setIsGameOver] = useState(false);
@@ -44,9 +36,6 @@ export default function FlappyBasedFinalUI() {
     lastPipeSpawn: 0,
   });
 
-  // ==========================================
-  // PRELOAD GAMBAR (Opsional: Jika ingin pakai gambar)
-  // ==========================================
   useEffect(() => {
     const img = new Image();
     img.src = BIRD_IMAGE_URL;
@@ -55,9 +44,6 @@ export default function FlappyBasedFinalUI() {
     };
   }, []);
 
-  // ==========================================
-  // FUNGSI DATABASE & FARCASTER
-  // ==========================================
   const sendScoreToSupabase = useCallback(async (finalScore: number) => {
     if (!farcasterUser || finalScore === 0 || isSubmitting || isSubmitted) return;
     setIsSubmitting(true);
@@ -70,20 +56,18 @@ export default function FlappyBasedFinalUI() {
     if (!error) setIsSubmitted(true);
   }, [farcasterUser, isSubmitting, isSubmitted]);
 
-  // FUNGSI SHARE SCORE SUDAH DIUBAH UNTUK MENGARAHKAN KE FRAME
   const shareScore = useCallback(() => {
     if (!farcasterUser) return;
     const text = `I just scored ${score} in Flappy Based! Can you beat my score? @${farcasterUser.username} #FlappyBased #Farcaster`;
-    const embedUrl = `${APP_BASE_URL}/frame?score=${score}`; // Mengarahkan ke Frame dengan skor
-    const shareUrl = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(embedUrl)}`;
-    farcaster.actions.openUrl(shareUrl);
+    const embedUrl = `${APP_BASE_URL}/frame?score=${score}`;
+    sdk.actions.openUrl(`https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(embedUrl)}`);
   }, [score, farcasterUser]);
 
   useEffect(() => {
     const initFarcasterSDK = async () => {
       try {
-        await farcaster.actions.ready();
-        const context = await farcaster.context;
+        await sdk.actions.ready();
+        const context = await sdk.context;
         if (context?.user) {
           setFarcasterUser(context.user);
         }
@@ -94,9 +78,6 @@ export default function FlappyBasedFinalUI() {
     initFarcasterSDK();
   }, []);
 
-  // ==========================================
-  // LOGIKA GAME
-  // ==========================================
   const jump = () => {
     if (isGameOver) return;
     if (!gameStarted) setGameStarted(true);
@@ -128,10 +109,9 @@ export default function FlappyBasedFinalUI() {
     const gameLoop = (timestamp: number) => {
       if (isGameOver) return;
 
-      // --- TAMPILAN AWAL (START SCREEN) ---
       if (!gameStarted) {
         ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Background
+        ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
         ctx.fillStyle = 'white';
         ctx.font = 'bold 28px sans-serif';
         ctx.textAlign = 'center';
@@ -139,18 +119,14 @@ export default function FlappyBasedFinalUI() {
         ctx.font = '18px sans-serif';
         ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
         
-        // HANYA TEKS, TIDAK ADA BOLA/BURUNG DI TAMPILAN AWAL INI
-
         animationFrameId = requestAnimationFrame(gameLoop);
         return;
       }
 
-      // --- LOGIKA UPDATE (saat game berjalan) ---
       const state = gameState.current;
       state.birdVelocity += GRAVITY;
       state.birdY += state.birdVelocity;
 
-      // LOGIKA PIPA BARU: Memastikan pipa selalu bisa dilewati
       if (timestamp - state.lastPipeSpawn > PIPE_SPAWN_RATE) {
         const minTop = 50;
         const maxTop = GAME_HEIGHT - GAP_SIZE - 60; 
@@ -176,19 +152,16 @@ export default function FlappyBasedFinalUI() {
 
       if (state.birdY > GAME_HEIGHT - BIRD_SIZE || state.birdY < 0) setIsGameOver(true);
 
-      // --- RENDERING (saat game berjalan) ---
       ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT); // Langit
-      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20); // Tanah
+      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20);
 
-      // Pipa
       ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
       state.pipes.forEach(pipe => {
         ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
         ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
       });
 
-      // KARAKTER BURUNG (Hanya muncul saat game berjalan)
       if (birdImageRef.current) {
         ctx.drawImage(birdImageRef.current, 50, state.birdY, BIRD_SIZE, BIRD_SIZE);
       } else {
@@ -197,7 +170,6 @@ export default function FlappyBasedFinalUI() {
         ctx.fill();
       }
 
-      // Skor
       if (gameStarted && !isGameOver) {
         ctx.fillStyle = 'white'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(score.toString(), GAME_WIDTH / 2, 80);
@@ -210,9 +182,6 @@ export default function FlappyBasedFinalUI() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [isGameOver, gameStarted, score, farcasterUser]);
 
-  // ==========================================
-  // TAMPILAN UTAMA (UI)
-  // ==========================================
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-[#0052FF] text-white p-4 overflow-hidden">
       <div className="w-full max-w-[360px] flex flex-col items-center mb-4 z-10 px-2">
@@ -224,7 +193,6 @@ export default function FlappyBasedFinalUI() {
         )}
       </div>
 
-      {/* Container Game dengan ukuran baru */}
       <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF]" style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}>
         <canvas
           ref={canvasRef}

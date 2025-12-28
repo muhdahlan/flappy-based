@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { Metadata } from 'next';
 
 type Props = {
@@ -39,8 +41,6 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 }
 
 export default function FramePage({ searchParams }: Props) {
-  console.log('🔍 DEBUG KOMPONEN: searchParams yang diterima halaman:', JSON.stringify(searchParams));
-
   const score = typeof searchParams.score === 'string' ? searchParams.score : '0';
   return (
     <div style={{ padding: '20px', textAlign: 'center', fontFamily: 'sans-serif', color: '#333' }}>

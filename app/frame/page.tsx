@@ -5,8 +5,9 @@ type Props = {
 };
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
-  const score = typeof searchParams.score === 'string' ? searchParams.score : '0';
+  console.log('🔍 DEBUG CODESPACE: searchParams yang diterima:', JSON.stringify(searchParams));
 
+  const score = typeof searchParams.score === 'string' ? searchParams.score : '0';
   const host = 'https://flappy-based.vercel.app';
 
   const ogImageUrl = `${host}/api/og?score=${score}&ts=${Date.now()}`;

@@ -9,7 +9,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
   const host = 'https://flappy-based.vercel.app';
 
-  const ogImageUrl = `${host}/api/og?score=${score}`;
+  const ogImageUrl = `${host}/api/og?score=${score}&ts=${Date.now()}`;
   const appUrl = `${host}/`;
 
   return {

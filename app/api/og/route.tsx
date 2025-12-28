@@ -2,7 +2,6 @@ import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
-
 export const runtime = 'edge';
 
 export async function GET(req: NextRequest) {
@@ -28,7 +27,7 @@ export async function GET(req: NextRequest) {
         >
           <div style={{ fontSize: 40, marginBottom: 10 }}>My Flappy Based Score:</div>
           <div style={{ fontSize: 120, fontWeight: 'bold' }}>{score}</div>
-          <div style={{ fontSize: 30, marginTop: 20 }}>Tap to play!</div>
+          <div style={{ fontSize: 30, marginTop: 20 }}>Can you beat it?</div>
         </div>
       ),
       {

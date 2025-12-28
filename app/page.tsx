@@ -1,226 +1,240 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import sdk from '@farcaster/frame-sdk';
-import { supabase } from '@/lib/supabase';
-import Link from 'next/link';
+import { useEffect, useState, useCallback } from 'react';
+import sdk, { type FrameContext } from '@farcaster/frame-sdk';
+import { getSession, signIn } from 'next-auth/react';
+import { encodeFunctionData, parseAbi } from 'viem';
 
-const APP_BASE_URL = 'https://flappy-based.vercel.app'; 
+const CLAIM_ABI = parseAbi([
+  'function claim() external'
+]);
 
-const GAME_WIDTH = 360;
-const GAME_HEIGHT = 500;
-const GRAVITY = 0.25;
-const JUMP = -4.5;
-const PIPE_SPEED = 2;
-const PIPE_SPAWN_RATE = 1500;
-const GAP_SIZE = 140;
-const BIRD_SIZE = 40;
+const CONTRACT_CONFIG = {
+  degen: {
+    address: '0xe5CBd6aE020807de9327cb149dE1aA432E37291d', 
+    chainId: 8453,
+    name: 'Base'
+  },
+  arb: {
+    address: '0xc5e582aB8C9f9A6C3eD612CADdB06E5814aa18EC',
+    chainId: 42161,
+    name: 'Arbitrum One'
+  },
+  celo: {
+    address: '0xc5e582aB8C9f9A6C3eD612CADdB06E5814aa18EC',
+    chainId: 42220,
+    name: 'Celo'
+  }
+} as const;
 
-const BIRD_IMAGE_URL = 'https://imagedelivery.net/BXluQx4igeBGuW0Ia56BHw/f3975231-3886-426a-e152-67813b4a9200/rectcrop';
+type CoinType = keyof typeof CONTRACT_CONFIG;
 
-export default function FlappyBasedFinalUI() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const birdImageRef = useRef<HTMLImageElement | null>(null);
-  const [isGameOver, setIsGameOver] = useState(false);
-  const [score, setScore] = useState(0);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [farcasterUser, setFarcasterUser] = useState<any>(null);
+interface UserState {
+  fid: number;
+  score: number;
+  username?: string;
+  pfpUrl?: string;
+}
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
+export default function Home() {
+  const [user, setUser] = useState<UserState | null>(null);
+  const [isSDKLoaded, setIsSDKLoaded] = useState(false);
+  const [showClaimMenu, setShowClaimMenu] = useState(false);
+  const [isClaiming, setIsClaiming] = useState(false);
+  const [claimMessage, setClaimMessage] = useState<string | null>(null);
 
-  const gameState = useRef({
-    birdY: GAME_HEIGHT / 2,
-    birdVelocity: 0,
-    pipes: [] as { x: number; topHeight: number; passed: boolean }[],
-    lastPipeSpawn: 0,
-  });
-
-  useEffect(() => {
-    const img = new Image();
-    img.src = BIRD_IMAGE_URL;
-    img.onload = () => {
-      birdImageRef.current = img;
-    };
-  }, []);
-
-  const sendScoreToSupabase = useCallback(async (finalScore: number) => {
-    if (!farcasterUser || finalScore === 0 || isSubmitting || isSubmitted) return;
-    setIsSubmitting(true);
-    const { error } = await supabase.from('scores').insert({
-      username: farcasterUser.username,
-      score: finalScore,
-      fid: farcasterUser.fid,
-    });
-    setIsSubmitting(false);
-    if (!error) setIsSubmitted(true);
-  }, [farcasterUser, isSubmitting, isSubmitted]);
-
-  const shareScore = useCallback(() => {
-    if (!farcasterUser) return;
-    const text = `I just scored ${score} in Flappy Based! Can you beat my score? @${farcasterUser.username} #FlappyBased #Farcaster`;
-    const embedUrl = `${APP_BASE_URL}/frame?score=${score}`;
-    sdk.actions.openUrl(`https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(embedUrl)}`);
-  }, [score, farcasterUser]);
-
-  useEffect(() => {
-    const initFarcasterSDK = async () => {
-      try {
-        await sdk.actions.ready();
-        const context = await sdk.context;
-        if (context?.user) {
-          setFarcasterUser(context.user);
-        }
-      } catch (error) {
-        console.error("Farcaster SDK initialization failed:", error);
+  const fetchUserData = useCallback(async (fid: number) => {
+    try {
+      const response = await fetch(`/api/user?fid=${fid}`);
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data);
       }
-    };
-    initFarcasterSDK();
-  }, []);
-
-  const jump = () => {
-    if (isGameOver) return;
-    if (!gameStarted) setGameStarted(true);
-    gameState.current.birdVelocity = JUMP;
-  };
-
-  const resetGame = () => {
-    gameState.current = { birdY: GAME_HEIGHT / 2, birdVelocity: 0, pipes: [], lastPipeSpawn: 0 };
-    setScore(0);
-    setIsGameOver(false);
-    setGameStarted(false);
-    setIsSubmitting(false);
-    setIsSubmitted(false);
-  };
-
-  useEffect(() => {
-    if (isGameOver && score > 0) {
-      sendScoreToSupabase(score);
+    } catch (err) {
+      console.error('Error fetching user data:', err);
     }
-  }, [isGameOver, score, sendScoreToSupabase]);
+  }, []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-
-    let animationFrameId: number;
-
-    const gameLoop = (timestamp: number) => {
-      if (isGameOver) return;
-
-      if (!gameStarted) {
-        ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 28px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('FLAPPY BASED', GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
-        ctx.font = '18px sans-serif';
-        ctx.fillText('Tap to Start', GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-        
-        animationFrameId = requestAnimationFrame(gameLoop);
-        return;
+    const initSDK = async () => {
+      try {
+        const ctx = await sdk.context;
+        if (ctx?.user?.fid) {
+          const session = await getSession();
+          if (!session) {
+            await signIn('credentials', {
+              fid: ctx.user.fid,
+              redirect: false,
+            });
+          }
+          await fetchUserData(ctx.user.fid);
+        }
+      } catch (err) {
+        console.error('Error initializing SDK:', err);
+      } finally {
+        setIsSDKLoaded(true);
+        sdk.actions.ready();
       }
-
-      const state = gameState.current;
-      state.birdVelocity += GRAVITY;
-      state.birdY += state.birdVelocity;
-
-      if (timestamp - state.lastPipeSpawn > PIPE_SPAWN_RATE) {
-        const minTop = 50;
-        const maxTop = GAME_HEIGHT - GAP_SIZE - 60; 
-        const topHeight = Math.random() * (maxTop - minTop) + minTop;
-        state.pipes.push({ x: GAME_WIDTH, topHeight, passed: false });
-        state.lastPipeSpawn = timestamp;
-      }
-
-      state.pipes.forEach((pipe, index) => {
-        pipe.x -= PIPE_SPEED;
-        const birdHitboxSize = BIRD_SIZE * 0.8;
-        const birdX = 50 + (BIRD_SIZE - birdHitboxSize) / 2;
-        const birdY = state.birdY + (BIRD_SIZE - birdHitboxSize) / 2;
-        const pipeWidth = 52;
-
-        const hitTop = birdX + birdHitboxSize > pipe.x && birdX < pipe.x + pipeWidth && birdY < pipe.topHeight;
-        const hitBottom = birdX + birdHitboxSize > pipe.x && birdX < pipe.x + pipeWidth && birdY + birdHitboxSize > pipe.topHeight + GAP_SIZE;
-        
-        if (hitTop || hitBottom) setIsGameOver(true);
-        if (!pipe.passed && birdX > pipe.x + pipeWidth) { setScore(p => p + 1); pipe.passed = true; }
-        if (pipe.x + pipeWidth < -10) state.pipes.splice(index, 1);
-      });
-
-      if (state.birdY > GAME_HEIGHT - BIRD_SIZE || state.birdY < 0) setIsGameOver(true);
-
-      ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0052FF'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-      ctx.fillStyle = '#0047CC'; ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20);
-
-      ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
-      state.pipes.forEach(pipe => {
-        ctx.fillRect(pipe.x, 0, 52, pipe.topHeight);
-        ctx.fillRect(pipe.x, pipe.topHeight + GAP_SIZE, 52, GAME_HEIGHT);
-      });
-
-      if (birdImageRef.current) {
-        ctx.drawImage(birdImageRef.current, 50, state.birdY, BIRD_SIZE, BIRD_SIZE);
-      } else {
-        ctx.fillStyle = '#FCD34D'; ctx.beginPath(); 
-        ctx.arc(50 + BIRD_SIZE/2, state.birdY + BIRD_SIZE/2, BIRD_SIZE/2, 0, 2 * Math.PI); 
-        ctx.fill();
-      }
-
-      if (gameStarted && !isGameOver) {
-        ctx.fillStyle = 'white'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(score.toString(), GAME_WIDTH / 2, 80);
-      }
-
-      if (!isGameOver) animationFrameId = requestAnimationFrame(gameLoop);
     };
 
-    animationFrameId = requestAnimationFrame(gameLoop);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isGameOver, gameStarted, score, farcasterUser]);
+    if (!isSDKLoaded) {
+      initSDK();
+    }
+  }, [isSDKLoaded, fetchUserData]);
+
+  const handleClaimOnChain = async (coin: CoinType) => {
+    setIsClaiming(true);
+    setClaimMessage(null);
+
+    const config = CONTRACT_CONFIG[coin];
+    
+    try {
+      setClaimMessage(`Preparing transaction for ${config.name}...`);
+
+      const encodedTransactionData = encodeFunctionData({
+        abi: CLAIM_ABI,
+        functionName: 'claim', 
+        args: [] 
+      });
+
+      setClaimMessage(`Please sign the transaction in your wallet (${config.name})...`);
+
+      const txHash = await sdk.actions.transaction({
+        chainId: `eip155:${config.chainId}`, 
+        to: config.address as `0x${string}`, 
+        data: encodedTransactionData,        
+        value: "0", 
+      });
+
+      console.log('Transaction submitted:', txHash);
+      setClaimMessage(`Transaction Submitted! Hash: ${txHash.slice(0, 10)}...`);
+      
+      setTimeout(() => {
+        setShowClaimMenu(false);
+        setClaimMessage(null);
+      }, 4000);
+
+    } catch (err: any) {
+      console.error('Transaction error:', err);
+      if (err.message?.includes('User rejected')) {
+        setClaimMessage('Transaction rejected by user.');
+      } else {
+        setClaimMessage(`Failed: ${err.message || 'Unknown error'}`);
+      }
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
+  if (!isSDKLoaded || !user) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#4EC0CA] p-4">
+        <div className="text-2xl font-bold text-white">Loading...</div>
+      </div>
+    );
+  }
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen bg-[#0052FF] text-white p-4 overflow-hidden">
-      <div className="w-full max-w-[360px] flex flex-col items-center mb-4 z-10 px-2">
-        <h1 className="text-3xl font-extrabold drop-shadow-md tracking-tight">Flappy Based</h1>
-        {farcasterUser && (
-          <p className="text-sm text-blue-100 mt-1 font-medium">
-            Playing as: <span className="font-bold text-white">@{farcasterUser.username}</span>
-          </p>
+    <main className="flex min-h-screen flex-col items-center bg-[#4EC0CA] p-4 font-sans relative">
+      <div className="absolute top-4 left-4 flex items-center space-x-2 bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+        {user.pfpUrl && (
+          <img src={user.pfpUrl} alt="Profile" className="w-8 h-8 rounded-full" />
         )}
+        <span className="text-white font-bold">
+          {user.username || `FID: ${user.fid}`}
+        </span>
       </div>
 
-      <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-[#0052FF]" style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}>
-        <canvas
-          ref={canvasRef}
-          width={GAME_WIDTH}
-          height={GAME_HEIGHT}
-          onClick={jump}
-          className="cursor-pointer block"
-        />
+      <div className="mt-32 mb-8 text-center">
+        <h1 className="text-4xl font-extrabold text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.3)]">
+          FLAPPY BASED
+        </h1>
+        <p className="text-white text-lg opacity-90">High Score: {user.score}</p>
+      </div>
 
-        {isGameOver && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20 p-6 backdrop-blur-sm">
-            <p className="text-4xl text-white font-extrabold mb-2 drop-shadow-lg">Game Over!</p>
-            <div className="bg-white/10 p-4 rounded-xl mb-4 text-center shadow-lg border border-white/20 w-full max-w-[240px]">
-              <p className="text-sm text-blue-200 uppercase tracking-wider font-bold">Your Score</p>
-              <p className="text-6xl font-black text-white mt-1">{score}</p>
+      <button
+        onClick={() => window.location.href = `/game?fid=${user.fid}`}
+        className="bg-[#F5A623] hover:bg-[#E09512] text-white font-bold py-3 px-8 rounded-full text-xl shadow-[0_4px_0_#C8830F] transform transition-all active:translate-y-1 active:shadow-[0_0_0_#C8830F] mb-6 w-48"
+      >
+        PLAY
+      </button>
+
+      <div className="flex flex-col items-center w-full max-w-sm z-10">
+        {!showClaimMenu ? (
+          <button
+            onClick={() => setShowClaimMenu(true)}
+            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg transition-all w-56 mb-4 flex items-center justify-center space-x-2 border-2 border-white/20"
+          >
+            <span>🎁</span> <span>Claim On-Chain</span>
+          </button>
+        ) : (
+          <div className="bg-white/95 p-5 rounded-2xl shadow-2xl w-full animate-fade-in border-2 border-blue-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-gray-800 font-extrabold text-lg">Choose Reward:</h3>
+              <button 
+                onClick={() => { setShowClaimMenu(false); setClaimMessage(null); }}
+                className="text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full p-1 w-8 h-8 flex items-center justify-center"
+              >
+                ✕
+              </button>
             </div>
-            <button onClick={resetGame} className="w-full max-w-[240px] mb-3 px-6 py-3 bg-white text-[#0052FF] hover:bg-blue-50 rounded-xl font-bold text-lg">Try Again</button>
-            <button onClick={shareScore} className="w-full max-w-[240px] mb-3 px-6 py-3 bg-[#0047CC] hover:bg-[#003DB3] rounded-xl text-white font-bold text-lg flex items-center justify-center gap-2 border border-white/20"><span>📤</span> Share Score</button>
-            <div className="w-full max-w-[240px]">
-              <Link href="/leaderboard" className="w-full px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold flex items-center justify-center gap-2 border border-white/20"><span>🏆</span> Leaderboard</Link>
+            
+            {claimMessage && (
+              <div className={`text-center mb-4 text-sm font-medium p-3 rounded-lg break-words ${
+                claimMessage.includes('Failed') || claimMessage.includes('rejected') 
+                ? 'bg-red-100 text-red-700 border border-red-200' 
+                : 'bg-blue-100 text-blue-800 border border-blue-200'
+              }`}>
+                {claimMessage}
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-3">
+              <ClaimButton 
+                coin="degen" icon="🟣" label="DEGEN" subLabel="(Base)"
+                onClick={() => handleClaimOnChain('degen')} disabled={isClaiming} 
+              />
+              <ClaimButton 
+                coin="arb" icon="🔵" label="ARB" subLabel="(Arbitrum)"
+                onClick={() => handleClaimOnChain('arb')} disabled={isClaiming} 
+              />
+              <ClaimButton 
+                coin="celo" icon="🟢" label="CELO" subLabel="(Celo)"
+                onClick={() => handleClaimOnChain('celo')} disabled={isClaiming} 
+              />
             </div>
-            <div className="mt-3 h-6 flex items-center justify-center font-medium text-sm">
-              {isSubmitting && <p className="text-blue-200 flex items-center gap-2"><span className="animate-spin">⏳</span> Saving score...</p>}
-              {isSubmitted && <p className="text-green-400 flex items-center gap-2">✅ Score saved!</p>}
-            </div>
+            <p className="text-xs text-center text-gray-500 mt-4 leading-tight">
+              ⚠️ Your wallet will pop up to sign. Ensure you have some native tokens for gas fees.
+            </p>
           </div>
         )}
       </div>
+
+      <a href="/leaderboard" className="mt-4 text-white underline hover:text-gray-100 transition-colors">
+        View Leaderboard
+      </a>
     </main>
+  );
+}
+
+function ClaimButton({ coin, icon, label, subLabel, onClick, disabled }: { 
+  coin: CoinType, icon: string, label: string, subLabel: string, onClick: () => void, disabled: boolean 
+}) {
+  const styles = {
+    degen: 'bg-purple-50 hover:bg-purple-100 text-purple-900 border-purple-200',
+    arb: 'bg-blue-50 hover:bg-blue-100 text-blue-900 border-blue-200',
+    celo: 'bg-green-50 hover:bg-green-100 text-green-900 border-green-200'
+  };
+  
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex flex-col items-center p-3 rounded-xl transition-all border-2 ${styles[coin]} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md active:scale-95'}`}
+    >
+      <span className="text-3xl mb-1 drop-shadow-sm">{icon}</span>
+      <span className="text-sm font-black">{label}</span>
+      <span className="text-[10px] font-medium opacity-70">{subLabel}</span>
+    </button>
   );
 }

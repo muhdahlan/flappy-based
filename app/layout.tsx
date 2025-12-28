@@ -4,9 +4,7 @@ import { Inter } from 'next/font/google';
 
 const inter = Inter({ subsets: ['latin'] });
 
-const host = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : 'http://localhost:3000';
+const host = 'https://flappy-based.vercel.app';
 
 export const metadata: Metadata = {
   title: 'Flappy Based',
@@ -18,7 +16,7 @@ export const metadata: Metadata = {
     siteName: 'Flappy Based',
     images: [
       {
-        url: `${host}/opengraph-image.png`,
+        url: `${host}/icon.png`,
         width: 1200,
         height: 630,
       },
@@ -30,14 +28,14 @@ export const metadata: Metadata = {
     "base:app_id": "69392382e6be54f5ed71d4ee",
     "fc:frame": JSON.stringify({
       version: "next",
-      imageUrl: `${host}/opengraph-image.png`,
+      imageUrl: `${host}/icon.png`,
       button: {
         title: "Play Flappy Based 🐦",
         action: {
           type: "launch_frame",
           name: "Flappy Based",
           url: host,
-          splashImageUrl: `${host}/opengraph-image.png`,
+          splashImageUrl: `${host}/icon.png`,
           splashBackgroundColor: "#4EC0CA"
         }
       }

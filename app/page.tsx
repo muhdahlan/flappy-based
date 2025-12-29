@@ -66,8 +66,8 @@ export default function Home() {
         const userAny = ctx?.user as any;
         if (userAny?.verifiedAddresses && userAny.verifiedAddresses.length > 0) {
             setUserAddress(userAny.verifiedAddresses[0]);
-        } else if (ctx?.user?.custodyAddress) {
-            setUserAddress(ctx.user.custodyAddress);
+        } else if (userAny?.custodyAddress) {
+            setUserAddress(userAny.custodyAddress);
         }
 
         if (ctx?.user?.fid) {
@@ -136,7 +136,7 @@ export default function Home() {
 
       setClaimMessage(`Please sign the transaction in your wallet (${config.name})...`);
 
-      const txHash = await sdk.actions.transaction({
+      const txHash = await (sdk.actions as any).transaction({
         chainId: `eip155:${config.chainId}`, 
         to: config.address as `0x${string}`, 
         data: encodedTransactionData,        

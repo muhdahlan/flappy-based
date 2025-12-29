@@ -63,8 +63,9 @@ export default function Home() {
         const ctx = await sdk.context;
         setContext(ctx);
 
-        if (ctx?.user?.verifiedAddresses && ctx.user.verifiedAddresses.length > 0) {
-            setUserAddress(ctx.user.verifiedAddresses[0]);
+        const userAny = ctx?.user as any;
+        if (userAny?.verifiedAddresses && userAny.verifiedAddresses.length > 0) {
+            setUserAddress(userAny.verifiedAddresses[0]);
         } else if (ctx?.user?.custodyAddress) {
             setUserAddress(ctx.user.custodyAddress);
         }

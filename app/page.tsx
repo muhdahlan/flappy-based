@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import sdk from '@farcaster/frame-sdk';
 import { getSession, signIn } from 'next-auth/react';
-import { encodeFunctionData, parseAbi } from 'viem';
+import { parseAbi, createWalletClient, custom } from 'viem';
+import { base, arbitrum, celo, type Chain } from 'viem/chains';
 
 const CLAIM_ABI = parseAbi([
   'function claim(uint256 amount, uint256 nonce, bytes calldata signature) external'
@@ -12,17 +13,17 @@ const CLAIM_ABI = parseAbi([
 const CONTRACT_CONFIG = {
   degen: {
     address: '0xe5CBd6aE020807de9327cb149dE1aA432E37291d', // Base
-    chainId: 8453,
+    chainObj: base,
     name: 'Base'
   },
   arb: {
     address: '0xc5e582aB8C9f9A6C3eD612CADdB06E5814aa18EC', // Arbitrum One
-    chainId: 42161,
+    chainObj: arbitrum,
     name: 'Arbitrum One'
   },
   celo: {
     address: '0xc5e582aB8C9f9A6C3eD612CADdB06E5814aa18EC', // Celo
-    chainId: 42220,
+    chainObj: celo,
     name: 'Celo'
   }
 } as const;
@@ -37,13 +38,11 @@ interface UserState {
 }
 
 export default function Home() {
-  const [context, setContext] = useState<any | null>(null);
   const [user, setUser] = useState<UserState | null>(null);
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
   const [showClaimMenu, setShowClaimMenu] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [claimMessage, setClaimMessage] = useState<string | null>(null);
-  const [userAddress, setUserAddress] = useState<string | null>(null);
 
   const fetchUserData = useCallback(async (fid: number) => {
     try {
@@ -61,15 +60,6 @@ export default function Home() {
     const initSDK = async () => {
       try {
         const ctx = await sdk.context;
-        setContext(ctx);
-
-        const userAny = ctx?.user as any;
-        if (userAny?.verifiedAddresses && userAny.verifiedAddresses.length > 0) {
-            setUserAddress(userAny.verifiedAddresses[0]);
-        } else if (userAny?.custodyAddress) {
-            setUserAddress(userAny.custodyAddress);
-        }
-
         if (ctx?.user?.fid) {
           const session = await getSession();
           if (!session) {
@@ -94,24 +84,37 @@ export default function Home() {
   }, [isSDKLoaded, fetchUserData]);
 
   const handleClaimOnChain = async (coin: CoinType) => {
-    if (!user || !userAddress) {
-        setClaimMessage("Error: Wallet address not found. Please connect to Farcaster.");
+    if (!user) return;
+
+    const provider = sdk.wallet.ethProvider;
+    if (!provider) {
+        setClaimMessage("Error: Wallet provider not found. Please try opening in a different client.");
         return;
     }
 
     setIsClaiming(true);
     setClaimMessage(null);
     const config = CONTRACT_CONFIG[coin];
+    const targetChain = config.chainObj;
     
     try {
-      setClaimMessage(`Requesting authorization for ${coin.toUpperCase()}...`);
+      const walletClient = createWalletClient({
+        chain: targetChain,
+        transport: custom(provider)
+      });
 
+      setClaimMessage(`Switching network to ${config.name}...`);
+      await walletClient.switchChain({ id: targetChain.id });
+
+      const [address] = await walletClient.requestAddresses();
+
+      setClaimMessage(`Requesting authorization for ${coin.toUpperCase()}...`);
       const apiResponse = await fetch('/api/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             fid: user.fid,
-            userAddress: userAddress,
+            userAddress: address,
             coin: coin
         })
       });
@@ -122,29 +125,23 @@ export default function Home() {
         throw new Error(backendData.error || "Failed to get server authorization.");
       }
 
-      setClaimMessage(`Preparing blockchain transaction...`);
+      setClaimMessage(`Please sign the transaction in your wallet (${config.name})...`);
       
-      const encodedTransactionData = encodeFunctionData({
+      const hash = await walletClient.writeContract({
+        address: config.address as `0x${string}`,
         abi: CLAIM_ABI,
-        functionName: 'claim', 
+        functionName: 'claim',
         args: [
             BigInt(backendData.amount), 
             BigInt(backendData.nonce), 
             backendData.signature
-        ] 
+        ],
+        account: address,
+        chain: targetChain
       });
 
-      setClaimMessage(`Please sign the transaction in your wallet (${config.name})...`);
-
-      const txHash = await (sdk.actions as any).transaction({
-        chainId: `eip155:${config.chainId}`, 
-        to: config.address as `0x${string}`, 
-        data: encodedTransactionData,        
-        value: "0", 
-      });
-
-      console.log('Transaction submitted:', txHash);
-      setClaimMessage(`🎉 Claim Successful! Transaction is processing.`);
+      console.log('Transaction submitted:', hash);
+      setClaimMessage(`🎉 Claim Successful! Transaction Hash: ${hash.slice(0, 10)}...`);
       
       setTimeout(() => {
         setShowClaimMenu(false);
@@ -153,10 +150,12 @@ export default function Home() {
 
     } catch (err: any) {
       console.error('Claim error:', err);
-      if (err.message?.includes('User rejected')) {
+      if (err.message?.toLowerCase().includes('rejected')) {
         setClaimMessage('Transaction rejected by user.');
+      } else if (err.details) {
+         setClaimMessage(`Failed: ${err.details}`);
       } else {
-        setClaimMessage(`Failed: ${err.message}`);
+        setClaimMessage(`Failed: ${err.message || 'Unknown error'}`);
       }
     } finally {
       setIsClaiming(false);
@@ -187,9 +186,6 @@ export default function Home() {
           FLAPPY BASED
         </h1>
         <p className="text-white text-lg opacity-90">High Score: {user.score}</p>
-        {!userAddress && (
-             <p className="text-red-200 text-sm bg-red-900/30 px-2 rounded mt-2">⚠️ Wallet address not found. Claiming will fail.</p>
-        )}
       </div>
 
       <button
@@ -203,8 +199,8 @@ export default function Home() {
         {!showClaimMenu ? (
           <button
             onClick={() => setShowClaimMenu(true)}
-            disabled={!userAddress || user.score < 5}
-            className={`bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg transition-all w-64 mb-4 flex items-center justify-center space-x-2 border-2 border-white/20 ${(!userAddress || user.score < 5) ? 'opacity-50 cursor-not-allowed' : 'hover:from-purple-700 hover:to-blue-700'}`}
+            disabled={user.score < 5}
+            className={`bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg transition-all w-64 mb-4 flex items-center justify-center space-x-2 border-2 border-white/20 ${user.score < 5 ? 'opacity-50 cursor-not-allowed' : 'hover:from-purple-700 hover:to-blue-700'}`}
           >
             <span>🎁</span> <span>Claim Rewards</span>
           </button>
